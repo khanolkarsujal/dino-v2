@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dragon Campfire Defense</title>
+<style>
+  :root { --bg:#12240f; --fg:#f2f7ea; box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font-family:"Courier New",monospace; }
+  body { position:fixed; inset:0; overflow:hidden; }
+  #wrap { position:fixed; inset:0; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; image-rendering:pixelated; touch-action:none; }
+  button { font-family:inherit; font-weight:bold; border:3px solid #000; color:#fff; cursor:pointer; touch-action:manipulation; }
+  #fs { position:fixed; top:calc(8px + env(safe-area-inset-top,0px)); right:8px; z-index:3; background:#333; padding:6px 10px; font-size:16px; }
+  #over { display:none; position:absolute; inset:0; z-index:5; background:rgba(0,0,0,.7); color:#fff; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; }
+  #over button { background:#d63f20; font-size:18px; padding:12px 20px; }
+  #cards { display:none; position:absolute; inset:0; z-index:6; background:rgba(255,245,200,.55); flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:12px; overflow:auto; color:#1c1200; text-align:center; }
+  #cards h2 { margin:0; font-size:22px; text-shadow:0 1px 0 #fff; }
+  #cardrow { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+  .card { width:150px; min-height:170px; background:#2a1d4a; border:4px solid #ffd23a; border-radius:8px; padding:10px 8px; display:flex; flex-direction:column; align-items:center; gap:8px; font-size:13px; line-height:1.3; }
+  .card:hover, .card:active { background:#4a3380; transform:translateY(-3px); }
+  .card .ic { font-size:38px; } .card .tt { font-size:15px; color:#ffd23a; }
+  #start, #pause { display:none; position:absolute; inset:0; z-index:8; background:rgba(8,18,6,.88); flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; padding:16px; overflow:auto; }
+  #start { display:flex; }
+  #start h1 { margin:0; font-size:30px; color:#ffb347; text-shadow:0 3px 0 #000; letter-spacing:1px; }
+  #start .sub { font-size:14px; color:#cfe8b0; max-width:420px; line-height:1.4; }
+  #start .how { text-align:left; font-size:13px; line-height:1.55; max-width:440px; background:rgba(0,0,0,.4); border:2px solid #3b5a2a; border-radius:8px; padding:10px 14px; }
+  #start .how b { color:#ffd23a; }
+  #start button, #pause button, #over .alt { background:#d63f20; font-size:18px; padding:12px 24px; }
+  #over .alt, #pause .alt { background:#444; font-size:14px; padding:8px 16px; }
+  .pace { display:flex; gap:6px; align-items:center; font-size:13px; } .pb { background:#333; padding:6px 12px; font-size:13px; } .pb.on { background:#2f8f3a; }
+  #bar button { min-width:44px; min-height:44px; }
+  #bar { position:fixed; top:calc(8px + env(safe-area-inset-top,0px)); right:100px; z-index:3; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; max-width:calc(100vw - 112px); }
+  #bar button { padding:6px 10px; font-size:16px; }
+  #mu { position:fixed; top:calc(8px + env(safe-area-inset-top,0px)); right:54px; z-index:3; background:#333; padding:6px 10px; font-size:16px; }
+  @keyframes cardpop { from { transform:scale(.6) translateY(34px); opacity:0; } 60% { transform:scale(1.08) translateY(-4px); opacity:1; } to { transform:none; opacity:1; } }
+  @keyframes titledrop { from { transform:translateY(-30px); opacity:0; } to { transform:none; opacity:1; } }
+  @keyframes fadein { from { opacity:0; } to { opacity:1; } }
+  .card { animation:cardpop .4s cubic-bezier(.2,1.3,.4,1) backwards; transition:transform .12s, background .12s; }
+  .card:nth-child(2) { animation-delay:.09s; } .card:nth-child(3) { animation-delay:.18s; }
+  .card:hover { transform:translateY(-6px) scale(1.05); box-shadow:0 8px 0 rgba(0,0,0,.35); }
+  #cards h2 { animation:titledrop .35s ease-out backwards; }
+  #over { animation:fadein .8s ease-out; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="480" height="480"></canvas>
+  <div id="cards"><h2>Dawn breaks! Pick ONE upgrade</h2><div id="cardrow"></div></div>
+  <div id="over"><div style="font-size:24px">The campfire went out!</div><div id="score" style="line-height:1.6"></div><div id="best" style="font-size:12px;color:#aaa"></div><button id="again">Play again</button><button id="menu" class="alt">Main menu</button></div>
+  <div id="pause"><div style="font-size:26px;color:#ffd23a">Paused</div><button id="resume">Resume</button><button id="restart" class="alt">Restart</button><button id="menu2" class="alt">Main menu</button></div>
+  <div id="start">
+    <h1>🔥 Dragon Campfire Defense</h1>
+    <div class="sub">Night after night, monsters pour out of four dark caves to snuff out your campfire. Hatch dragons, raid the caves and survive to wave 15 to face the Nightmare Lord.</div>
+    <div class="how">
+      <b>Goal:</b> keep the campfire lit, destroy the caves, beat the boss.<br>
+      <b>Move:</b> WASD / arrows, or drag on the screen (touch).<br>
+      <b>Eggs:</b> grab wild eggs in the forest and carry them to the campfire to hatch dragons. Far eggs are stronger but guarded.<br>
+      <b>Raid (R):</b> your dragons follow you, fight the monsters hunting you and smash caves. Off at night.<br>
+      <b>Auto-walk (E / 🧭):</b> walks you to the nearest cave with your dragons.<br>
+      <b>📍:</b> turns the off-screen cave arrows on/off.<br>
+      <b>Map (G):</b> shows all 4 caves. <b>Mute (M)</b> · <b>Pause (P / Esc)</b><br>
+      <b>Every 5th wave</b> is a night: be home by the fire. Survive it and pick an upgrade at dawn.
+    </div>
+    <button id="go">▶ Start game</button>
+    <div id="startbest" style="font-size:12px;color:#9ab88a"></div>
+  </div>
+</div>
+<button id="fs" aria-label="Full screen">⛶</button>
+<button id="mu" aria-label="Sound">🔊</button>
+<div id="bar"><button id="raid" aria-label="Raid" style="background:#7a3a1a">🏹 Raid</button><button id="navb" aria-label="Go to nearest cave" style="background:#5a2a8a">🧭 Cave</button><button id="arrb" aria-label="Toggle cave arrows" title="Cave arrows on/off" style="background:#4a2a6a">📍</button><button id="mapb" aria-label="Map" style="background:#1a4a7a">🗺</button><button id="pz" aria-label="Pause" style="background:#555">⏸</button></div>
+<script>
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+const WW = 6000, WH = 6000, CX = 3000, CY = 3000;
+let CAMP = 300, choosing = false, up = { speed: 1, tMax: 100, fireMax: 100, dmg: 1, rate: 1, revive: 1, regen: 1, magnet: 1 };
+let W = 480, H = 480, camX = 0, camY = 0, night = false, nightFade = 0, dawn = 0, dayPos = 0, waveTotal = 1, breakTotal = 900, dropT = 0, eggMsgT = 0, mi = 0, tvx = 0, tvy = 0, deadT = 0;
+const DASH_ACC = .8, RESPAWN_SEC = 8;
+const MEGA_EVERY = 5, nc = document.createElement('canvas'), nctx = nc.getContext('2d');
+const COLORS = { ice:'#6fd3ff', fire:'#ff5a2a', earth:'#a0703a', electric:'#ffe03a' };
+const STATS = { fire:{ dmg:2.5, cd:40 }, earth:{ dmg:2, cd:35 }, ice:{ dmg:1.5, cd:38 }, electric:{ dmg:1.3, cd:36 } };
+const TYPES = Object.keys(STATS);
+// ---- risk & reward: egg tiers (0 Common, 1 Strong, 2 Elite, 3 Golden) ----
+const TIERCOL = ['#fff', '#5dff8a', '#c06bff', '#ffd700'], TIERN = ['Common', 'Strong', 'Elite', 'GOLDEN'], TD = [1, 1.35, 1.8, 2.6], TH = [1, 1.3, 1.7, 2.2], TR = [1, 1, 1.1, 1.25], TL = [1, 1, 2, 3], DUSK_AT = .6, FINAL_WAVE = 15, BOSS_HP = 1600;
+const TUNE = { pace: (() => { try { return +localStorage.getItem('dcd_pace') || .75; } catch (e) { return .75; } })(), nightGap: 14, dayGap: 45 }; // pace = simulation ticks per 1/60s; the ONE knob for game speed. gaps = ticks between spawns
+let duskPrev = false, nightPrev = false, nightsDone = 0, caves = [], raid = false, bigMap = false, started = false, paused = false, nav = null, arrowsOn = (() => { try { return localStorage.getItem('dcd_arrows') !== '0'; } catch (e) { return true; } })();
+function tierOdds(d) { const dp = Math.max(0, Math.min(1, (d - 350) / 2200)); return [.4 * dp * dp, .6 * dp]; } // [elite, strong] chance by distance from the fire
+function eggTier(d) { const o = tierOdds(d), r = Math.random(); return r < o[0] ? 2 : r < o[0] + o[1] ? 1 : 0; }
+const dragonCap = () => Math.min(12, 4 + nightsDone + (up.cap || 0)), dpow = d => (d.tier || 0) * 20 + d.lvl * 4 + (d.style === 'spell' ? 3 : d.style === 'melee' ? 1 : 0);
+function denCheck() { // dragon limit: a better egg replaces your weakest dragon, a worse one is released
+  if (dragons.length + eggs.length < dragonCap()) return true;
+  let wi = -1, wp = 1e9; dragons.forEach((d, i) => { const p = dpow(d); if (p < wp) { wp = p; wi = i; } });
+  const t = carry.tier || 0;
+  if (wi >= 0 && dpow({ tier: t, lvl: TL[t], style: carry.style }) > wp) { const o = dragons[wi]; popText(o.x, o.y - 20, 'Released', '#ccc', 11, 60); dragons.splice(wi, 1); dragons.forEach((d, i) => { d.slot = i; }); return true; }
+  popText(CX, CY - 40, 'Den full! Egg released.', '#ff8a8a', 12, 70); sfx.lost(); carry = null; return false;
+}
+function navStop(msg) { nav = null; const b = document.getElementById('navb'); if (b) b.textContent = '🧭 Cave'; if (msg) popText(trainer.x, trainer.y - 30, msg, '#e0a8ff', 12, 70); }
+function navStart() {
+  if (nav) { navStop('Navigation cancelled'); return; }
+  if (!started || paused || gameOver || deadT > 0) return;
+  if (night) { popText(trainer.x, trainer.y - 30, 'Too dangerous at night!', '#ff8a8a', 12, 70); return; }
+  let best = null, bd = 1e9; caves.forEach(c => { if (!c.alive) return; const d = Math.hypot(c.x - trainer.x, c.y - trainer.y); if (d < bd) { bd = d; best = c; } });
+  if (!best) { popText(trainer.x, trainer.y - 30, 'No caves left!', '#9aff9a', 12, 70); return; }
+  nav = best; document.getElementById('navb').textContent = '🧭 Going...'; if (!raid) setRaid(true); popText(trainer.x, trainer.y - 30, 'Heading to Cave ' + (caves.indexOf(best) + 1), '#e0a8ff', 12, 70);
+}
+function setRaid(v) { raid = !!v && started && !paused && !night && dragons.length > 0 && !gameOver; const b = document.getElementById('raid'); if (b) b.textContent = raid ? '🏹 RAID ON' : '🏹 Raid'; }
+function caveDown(c) { // destroying a cave makes the others swarm the camp
+  c.alive = false; c.hp = 0; spark(c.x, c.y, 50, ['#b040ff', '#fff', '#555'], 4, 3, 50); ringFx(c.x, c.y, '#b040ff', 10, 90, 24); sfx.boom(); addTrauma(.5); flashFx('#b040ff', .3);
+  const rest = caves.filter(k => k.alive);
+  if (rest.length) { rest.forEach(k => { for (let i = 0; i < 10 + 4 * nightsDone; i++) spawnEnemy(k); }); fxBanner('CAVE DESTROYED!', 'The other caves swarm the camp - run back!', '#ff9aff', 220); }
+  else fxBanner('ALL CAVES DESTROYED!', 'Nights will be much weaker now.', '#9aff9a', 220);
+}
+function spawnBoss() { const cv = caves.filter(c => c.alive), c0 = cv.length ? cv[Math.floor(Math.random() * cv.length)] : { x: CX + 900, y: CY }, hp = BOSS_HP + 120 * dragons.length; enemies.push({ x: c0.x, y: c0.y, hp, max: hp, speed: .55, slow: 0, last: null, kind: 9, cd: 60 }); }
+function bestGet() { try { return JSON.parse(localStorage.getItem('dcd_best') || '{}'); } catch (e) { return {}; } }
+function endScreen(title, win) {
+  const b = bestGet(), tm = Math.floor(time / 60), nm = Math.floor(tm / 60) + ':' + String(tm % 60).padStart(2, '0');
+  const rec = (win && !b.wins) || (!win && !b.wins && wave > (b.wave || 0));
+  b.wave = Math.max(b.wave || 0, wave); b.kills = Math.max(b.kills || 0, kills); b.wins = (b.wins || 0) + (win ? 1 : 0);
+  try { localStorage.setItem('dcd_best', JSON.stringify(b)); } catch (e) {}
+  const t = document.querySelector('#over div'); t.textContent = title; t.style.color = win ? '#ffd23a' : '#fff';
+  document.getElementById('score').innerHTML = 'Wave reached: <b>' + wave + '</b> / ' + FINAL_WAVE + '<br>Enemies defeated: <b>' + kills + '</b><br>Dragons: <b>' + dragons.length + '</b> · Caves destroyed: <b>' + caves.filter(c => !c.alive).length + '</b>/4<br>Time survived: <b>' + nm + '</b>' + (rec ? '<br><span style="color:#ffd23a">New best wave!</span>' : '');
+  document.getElementById('best').textContent = 'Best wave: ' + b.wave + ' · Most kills: ' + b.kills + ' · Victories: ' + b.wins;
+  document.getElementById('over').style.display = 'flex';
+}
+function paceRow() { const r = document.createElement('div'); r.className = 'pace'; r.innerHTML = '<span>Game speed:</span>';
+  [['Chill', .6], ['Normal', .75], ['Fast', 1]].forEach(([n, v]) => { const b = document.createElement('button'); b.className = 'pb'; b.dataset.v = v; b.textContent = n; b.onclick = () => { TUNE.pace = v; try { localStorage.setItem('dcd_pace', v); } catch (e) {} document.querySelectorAll('.pb').forEach(x => x.classList.toggle('on', +x.dataset.v === TUNE.pace)); }; r.appendChild(b); });
+  return r; }
+function showMenu() { reset(); started = false; paused = false; document.getElementById('pause').style.display = 'none'; const b = bestGet(); document.getElementById('startbest').textContent = b.wave ? 'Best wave: ' + b.wave + ' · Victories: ' + (b.wins || 0) : ''; document.getElementById('start').style.display = 'flex'; }
+function setPause(v) { if (!started || gameOver || choosing) return; paused = v; document.getElementById('pause').style.display = v ? 'flex' : 'none'; joy.on = false; joy.dx = joy.dy = 0; }
+function victory() { gameOver = true; setRaid(false); endScreen('VICTORY! The Nightmare Lord is dead!', true); sfx.dawn(); flashFx('#fff2b0', .8); addTrauma(.6); spark(CX, CY, 60, ['#ffd23a', '#fff'], 4, 3, 60, -.02); }
+function bossBar() { const b = enemies.find(e => e.kind === 9); if (!b) return; const w = 200, x = Math.round((W - w) / 2); px(x - 2, 48, w + 4, 12, '#000'); px(x, 50, w * Math.max(0, b.hp) / b.max, 8, '#ff2a2a'); ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.textAlign = 'center'; ctx.fillText('NIGHTMARE LORD', W / 2, 46); ctx.textAlign = 'left'; }
+function zoneOf(d) { return d < 700 ? 'Camp woods' : d < 1400 ? 'The Wilds' : d < 2100 ? 'Deep forest' : "Dragon's Reach"; }
+const STYLE = { melee:{ range:20, dmg:2.2, cd:.8, speed:2.2 }, range:{ range:55, dmg:1, cd:1, speed:1.8 }, spell:{ range:95, dmg:2.4, cd:3.2, speed:1.5 } };
+function maxHpOf(d) { return Math.round((20 + 10 * (d.lvl - 1) + (d.style === 'melee' ? 15 : 0)) * TH[d.tier || 0]); }
+function monHp(m) { if (m.hp === undefined) m.hp = (m.elite ? 14 : 6) + 2 * nightsDone; return m.hp; }
+function hitEnemy(en, owner, dmg) {
+  if (en.hp === undefined) monHp(en);
+  en.hp -= dmg; en.last = owner; hitFx(en, owner.type, dmg);
+  if (owner.type === 'ice') en.slow = 120;
+  if (owner.type === 'electric') enemies.forEach(o => { if (o !== en && Math.hypot(o.x - en.x, o.y - en.y) < 40) { o.hp -= dmg * .45; o.last = owner; hitFx(o, 'electric', dmg * .45, true); fx.push({ kind: 'bolt', x: en.x, y: en.y, x2: o.x, y2: o.y, t: 8 }); } });
+}
+let spells, fx, wave, waveLeft, waveBreak, waveTimer, waveMsgT, waveMsg, monsters, tHp, hurt, msgT, fireHp, enemies, dragons, shots, eggs, wild, carry, spawnTimer, spawnRate, eggTimer, gameOver, time, kills, trainer = { x: 0, y: 0 };
+const keys = {}; const joy = { on:false, ox:0, oy:0, dx:0, dy:0 };
+// ===================== GAME FEEL: sound, particles, screen shake, popups =====================
+let parts = [], pops = [], trauma = 0, hitstop = 0, shX = 0, shY = 0, flash = { a: 0, col: '#fff' }, combo = 0, comboT = 0, banner = null, campAcc = 0, campT = 0, killPulse = 0, fireShow = 100, tShow = 100, fireFlash = 0, trFlash = 0, fxT = 0, VK = 1;
+const STYN = { melee: 'Melee', range: 'Range', spell: 'Spell' }, NUMCOL = { fire: '#ff9a5a', ice: '#9ae6ff', earth: '#e8b070', electric: '#fff27a' };
+const cap = s => s[0].toUpperCase() + s.slice(1), fmt = n => n >= 10 ? String(Math.round(n)) : String(Math.round(n * 10) / 10);
+const easeOutBack = p => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
+function juiceReset() { parts = []; pops = []; trauma = 0; hitstop = 0; flash.a = 0; combo = 0; comboT = 0; banner = null; campAcc = 0; campT = 0; killPulse = 0; fireShow = fireHp; tShow = tHp; fireFlash = 0; trFlash = 0; }
+
+// ---------- audio: everything is synthesised with WebAudio, no files needed ----------
+const AU = { ctx: null, out: null, on: true, t: {}, noise: null, drone: null };
+try { AU.on = localStorage.getItem('dcd_mute') !== '1'; } catch (e) {}
+function auInit() {
+  if (AU.ctx) { if (AU.ctx.state === 'suspended') AU.ctx.resume(); return; }
+  try {
+    const A = window.AudioContext || window.webkitAudioContext; if (!A) return;
+    const x = AU.ctx = new A(); AU.out = x.createGain(); AU.out.gain.value = AU.on ? .55 : 0; AU.out.connect(x.destination);
+    const len = x.sampleRate, buf = x.createBuffer(1, len, x.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; AU.noise = buf;
+    const g = x.createGain(); g.gain.value = 0; const lp = x.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
+    const o1 = x.createOscillator(), o2 = x.createOscillator(); o1.type = 'sawtooth'; o2.type = 'sine'; o1.frequency.value = 55; o2.frequency.value = 82.4;
+    o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(AU.out); o1.start(); o2.start(); AU.drone = { g, lp, o1 };
+  } catch (e) { AU.ctx = null; }
+}
+['pointerdown', 'keydown', 'touchstart'].forEach(t => addEventListener(t, auInit, { passive: true }));
+function toggleMute() { AU.on = !AU.on; try { localStorage.setItem('dcd_mute', AU.on ? '0' : '1'); } catch (e) {} if (AU.out) AU.out.gain.value = AU.on ? .55 : 0; document.getElementById('mu').textContent = AU.on ? '🔊' : '🔇'; auInit(); }
+{ const mu = document.getElementById('mu'); mu.textContent = AU.on ? '🔊' : '🔇'; mu.onclick = toggleMute; }
+function can(n, ms) { const t = performance.now(); if (AU.t[n] && t - AU.t[n] < ms) return false; AU.t[n] = t; return true; }
+function tone(f, dur, type, vol, slide, delay) {
+  const x = AU.ctx; if (!x || !AU.on) return; const t0 = x.currentTime + (delay || 0), o = x.createOscillator(), g = x.createGain();
+  o.type = type || 'square'; o.frequency.setValueAtTime(f, t0); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, f * slide), t0 + dur);
+  g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(Math.max(.0002, vol * VK), t0 + .005); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+  o.connect(g); g.connect(AU.out); o.start(t0); o.stop(t0 + dur + .03);
+}
+function noiseB(dur, vol, freq, ftype, delay, q) {
+  const x = AU.ctx; if (!x || !AU.on || !AU.noise) return; const t0 = x.currentTime + (delay || 0), s = x.createBufferSource(), f = x.createBiquadFilter(), g = x.createGain();
+  s.buffer = AU.noise; f.type = ftype || 'lowpass'; f.frequency.value = freq || 1000; f.Q.value = q || 1;
+  g.gain.setValueAtTime(Math.max(.0002, vol * VK), t0); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+  s.connect(f); f.connect(g); g.connect(AU.out); s.start(t0, Math.random() * .5); s.stop(t0 + dur + .03);
+}
+function arp(notes, step, type, vol, dur, delay) { notes.forEach((f, i) => tone(f, dur, type, vol, 1, (delay || 0) + i * step)); }
+function at(x, y, fn) { VK = Math.max(0, Math.min(1, 1 - Math.hypot(trainer.x - x, trainer.y - y) / 450)); if (VK > .06) fn(); VK = 1; } // sounds fade with distance
+const sfx = {
+  hit(type, big) {
+    if (!can('hit', 28)) return; const r = .9 + Math.random() * .2, v = big ? .15 : .09;
+    if (type === 'fire') { noiseB(.1, v, 1400, 'bandpass', 0, 1.2); tone(240 * r, .09, 'sawtooth', v * .8, .5); }
+    else if (type === 'ice') { tone(1500 * r, .09, 'triangle', v, .6); tone(2200 * r, .06, 'sine', v * .6, .7, .02); }
+    else if (type === 'earth') { tone(110 * r, .12, 'square', v, .5); noiseB(.09, v, 500, 'lowpass'); }
+    else { tone(900 * r, .05, 'square', v * .7, 1.8); tone(1300 * r, .05, 'square', v * .6, .5, .04); noiseB(.06, v * .6, 3000, 'highpass'); }
+  },
+  kill(c) { if (!can('kill', 25)) return; const k = Math.min(c, 16), f = 330 * Math.pow(2, k / 12); tone(f, .09, 'square', .08, 1.5); tone(f * 2, .07, 'triangle', .06, 1, .03); noiseB(.07, .06, 1800, 'bandpass'); },
+  comboUp() { arp([784, 988, 1175, 1568], .045, 'square', .07, .12); },
+  slash() { if (!can('slash', 60)) return; noiseB(.08, .08, 2500, 'highpass'); tone(700, .08, 'sawtooth', .04, .3); },
+  shoot(type) { if (!can('shoot', 50)) return; const f = { fire: 420, ice: 900, earth: 260, electric: 700 }[type]; tone(f, .1, type === 'earth' ? 'square' : 'triangle', .05, 1.8); },
+  cast() { if (!can('cast', 80)) return; tone(260, .3, 'sine', .07, 2.4); tone(390, .3, 'triangle', .04, 2.4, .02); },
+  boom() { if (!can('boom', 80)) return; noiseB(.4, .2, 500, 'lowpass'); tone(90, .35, 'sine', .28, .35); tone(180, .2, 'sawtooth', .05, .4); },
+  hurt() { tone(220, .25, 'sawtooth', .17, .4); noiseB(.15, .15, 900, 'lowpass'); },
+  campHit() { if (!can('camp', 180)) return; tone(75, .22, 'sine', .22, .6); noiseB(.12, .09, 400, 'lowpass'); },
+  dragHurt() { if (!can('dh', 90)) return; tone(300, .08, 'square', .05, .6); },
+  pickup() { tone(660, .08, 'triangle', .13); tone(990, .12, 'triangle', .13, 1, .07); },
+  rare() { arp([784, 988, 1175, 1568, 1976], .06, 'triangle', .11, .22); },
+  dusk() { arp([392, 466, 587, 784], .14, 'sine', .1, .5); tone(1568, .6, 'triangle', .05, 1, .5); },
+  drop() { tone(520, .07, 'triangle', .11); tone(660, .07, 'triangle', .11, 1, .06); tone(780, .12, 'triangle', .11, 1, .12); },
+  lost() { tone(300, .2, 'sawtooth', .1, .5); tone(200, .25, 'sawtooth', .1, .5, .12); },
+  crack() { noiseB(.05, .09, 3500, 'highpass'); tone(1800, .03, 'square', .03); },
+  hatch() { noiseB(.18, .14, 2200, 'highpass'); arp([523, 659, 784, 1047, 1319], .07, 'square', .07, .18, .08); },
+  level() { arp([523, 659, 784, 1047, 1319, 1568], .06, 'triangle', .12, .2); tone(2093, .4, 'sine', .04, 1, .35); },
+  ko() { tone(420, .45, 'sawtooth', .14, .25); },
+  revive() { if (!can('rv', 100)) return; arp([440, 554, 659], .07, 'triangle', .09, .15); },
+  wave() { tone(130, .55, 'sawtooth', .12, 1.05); tone(195, .55, 'sawtooth', .09, 1.05); tone(260, .5, 'triangle', .05, 1.05, .05); },
+  night() { tone(55, 1.6, 'sawtooth', .2, .7); tone(82, 1.6, 'sawtooth', .15, .7); noiseB(1.4, .16, 250, 'lowpass'); arp([196, 185, 175], .35, 'sawtooth', .09, .5, .2); },
+  clear() { arp([523, 659, 784], .09, 'triangle', .11, .22); },
+  heal() { arp([392, 523, 659], .06, 'sine', .09, .2); },
+  dawn() { arp([523, 659, 784, 1047, 1319, 1568], .11, 'triangle', .11, .4); },
+  warn() { if (!can('warn', 220)) return; tone(880, .06, 'square', .05); tone(880, .06, 'square', .05, 1, .09); },
+  dash() { if (!can('dash', 120)) return; noiseB(.2, .08, 1200, 'bandpass', 0, .8); tone(300, .18, 'sawtooth', .04, 2.5); },
+  tick() { if (!can('tick', 40)) return; tone(900, .03, 'square', .04); },
+  pick() { arp([660, 880, 1175], .06, 'square', .09, .15); },
+  cards() { arp([392, 523, 659, 784], .08, 'triangle', .1, .2, .25); },
+  over() { arp([392, 311, 262, 196], .22, 'sawtooth', .12, .5); },
+  heart() { tone(62, .12, 'sine', .28, .7); tone(58, .14, 'sine', .22, .7, .17); },
+  step() { if (!can('step', 140)) return; noiseB(.04, .02, 1800, 'bandpass'); }
+};
+function ambient() { // living soundscape: a drone that grows with the threat, fire crackle near camp, crickets by day
+  const x = AU.ctx; if (!x || !AU.on) return; const dc = Math.hypot(trainer.x - CX, trainer.y - CY);
+  if (fxT % 10 === 0 && AU.drone) { const t = x.currentTime, th = gameOver ? 0 : Math.max(mi, night ? .8 : 0); AU.drone.g.gain.setTargetAtTime(.012 + .1 * th, t, .5); AU.drone.lp.frequency.setTargetAtTime(110 + 700 * th, t, .8); AU.drone.o1.frequency.setTargetAtTime(55 * (1 + .12 * th), t, 1); }
+  if (!gameOver && dc < 260 && Math.random() < .05) noiseB(.015 + Math.random() * .02, .035 * (1 - dc / 260), 1500 + Math.random() * 2500, 'highpass');
+  if (!night && nightFade < .5 && Math.random() < .004) { const f = 4000 + Math.random() * 600; for (let i = 0; i < 3; i++) tone(f, .035, 'sine', .012, 1, i * .07); }
+}
+
+// ---------- particles, popups, shake ----------
+function emit(o) { if (parts.length < 520) { o.max = o.life; parts.push(o); } }
+function spark(x, y, n, cols, sp, size, life, g, add) { // radial burst of little squares
+  for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, s = sp * (.3 + Math.random() * .7);
+    emit({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, g: g || 0, life: life * (.6 + Math.random() * .6), size: size * (.6 + Math.random() * .8), col: cols[(Math.random() * cols.length) | 0], add: add !== false, shr: true, drag: .94 }); }
+}
+function popText(x, y, txt, col, size, max) { if (pops.length > 70) return; pops.push({ x, y, vx: (Math.random() - .5) * .3, vy: -1.3, txt, col, size: size || 11, t: 0, max: max || 44 }); }
+function ringFx(x, y, col, r0, r1, m) { fx.push({ kind: 'ring', x, y, t: m, m, col, r0, r1 }); }
+function addTrauma(n) { trauma = Math.min(1, trauma + n); }
+function flashFx(col, a) { flash.col = col; flash.a = Math.max(flash.a, a); }
+function freeze(n) { hitstop = Math.max(hitstop, n); }
+function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
+function fxBanner(title, sub, col, max) { banner = { title, sub, col, t: 0, max: max || 150 }; }
+
+// ---------- event effects ----------
+function hitFx(en, type, dmg, chain) {
+  en.flash = 5; const a = Math.atan2(en.y - CY, en.x - CX); en.kx = Math.cos(a) * 4; en.ky = Math.sin(a) * 4; en.rc = 6;
+  popText(en.x + (Math.random() - .5) * 12, en.y - 12, fmt(dmg), NUMCOL[type], dmg >= 4 ? 15 : dmg >= 2.5 ? 13 : 11);
+  spark(en.x, en.y, chain ? 3 : 6, [COLORS[type], '#fff'], 1.9, 2.5, 14);
+  at(en.x, en.y, () => sfx.hit(type, dmg >= 4)); addTrauma(dmg >= 4 ? .1 : .03);
+}
+function killFx(en) {
+  combo = comboT > 0 ? combo + 1 : 1; comboT = 140; killPulse = 8;
+  spark(en.x, en.y, 10, ['#6a1a6a', '#a03ad0', '#3a0a3a'], 2.4, 3, 26, .1, false);
+  spark(en.x, en.y, 8, ['#fff', '#e8a0ff'], 2.8, 2, 16);
+  ringFx(en.x, en.y, '#e8a0ff', 4, 14, 8); at(en.x, en.y, () => sfx.kill(combo)); addTrauma(.05);
+  if (combo === 5 || combo === 10 || combo % 20 === 0) { popText(trainer.x, trainer.y - 42, 'COMBO x' + combo + '!', '#ffe03a', 14, 60); sfx.comboUp(); addTrauma(.14); }
+}
+function atkFx(dr, tg, st) {
+  const a = Math.atan2(tg.y - dr.y, tg.x - dr.x); dr.ax = Math.cos(a); dr.ay = Math.sin(a); dr.at = st === 'melee' ? 8 : 5;
+  if (st === 'range') { spark(dr.x + dr.ax * 10, dr.y - 2 + dr.ay * 6, 4, [COLORS[dr.type], '#fff'], 1.6, 2, 10); at(dr.x, dr.y, () => sfx.shoot(dr.type)); }
+  else if (st === 'melee') at(dr.x, dr.y, () => sfx.slash());
+  else { spark(dr.x, dr.y - 6, 10, [COLORS[dr.type], '#fff'], 1.2, 2, 20, -.03); at(dr.x, dr.y, () => sfx.cast()); }
+}
+function boomFx(sp) { spark(sp.x, sp.y, 26, [COLORS[sp.type], '#fff'], 3.2, 3, 26); ringFx(sp.x, sp.y, COLORS[sp.type], 10, 38, 14); at(sp.x, sp.y, () => sfx.boom()); addTrauma(.2); }
+function levelUpFx(d) {
+  d.glow = 70; d.flash = 10; spark(d.x, d.y, 26, ['#ffe03a', '#fff', '#ffb03a'], 2.6, 3, 40, -.02); ringFx(d.x, d.y, '#ffe03a', 8, 34, 22);
+  popText(d.x, d.y - 26, 'LEVEL UP! Lv' + d.lvl, '#ffe03a', 13, 70); sfx.level(); addTrauma(.18); flashFx('#ffe27a', .16); freeze(5); buzz(15);
+}
+function pickupFx(w) {
+  spark(w.x, w.y, 16, ['#fff7a0', '#ffd23a', COLORS[w.type]], 2, 2.5, 28, -.03); ringFx(w.x, w.y, '#fff7a0', 4, 22, 14);
+  popText(trainer.x, trainer.y - 36, (w.tier ? TIERN[w.tier] + ' ' : '') + cap(w.type) + ' ' + STYN[w.style] + ' egg!', NUMCOL[w.type], 12, 60); trFlash = 8; flashFx('#fff6c0', .12); addTrauma(.07);
+  if (w.style === 'spell' || w.tier >= 2) { spark(w.x, w.y, 24, ['#ffd700', '#fff'], 3, 3, 40, -.03); popText(trainer.x, trainer.y - 50, w.gold ? 'GOLDEN EGG!' : 'RARE!', '#ffd700', 14, 60); sfx.rare(); addTrauma(.15); flashFx('#ffe27a', .22); } else sfx.pickup();
+}
+function dropFx(e) { sfx.drop(); spark(e.x, e.y, 10, ['#fff', COLORS[e.type]], 1.4, 2, 22, -.02); ringFx(e.x, e.y, '#fff', 4, 16, 12); popText(e.x, e.y - 16, 'Hatching...', '#fff', 10, 50); }
+function eggLostFx() { sfx.lost(); popText(trainer.x, trainer.y - 36, 'EGG LOST!', '#ff8a8a', 13, 60); }
+function eggTick(e) { if (e.timer < 45 && e.timer % 9 === 0) { sfx.crack(); spark(e.x, e.y - 2, 3, ['#f4f0e0'], 1.2, 2, 14, .08, false); } }
+function hatchFx(d) {
+  d.born = 36; spark(d.x, d.y, 18, ['#f4f0e0', '#e8e2c8'], 2.4, 3, 34, .1, false); spark(d.x, d.y - 6, 24, [COLORS[d.type], '#fff', '#ffd23a'], 3, 2.5, 40, -.02);
+  ringFx(d.x, d.y, COLORS[d.type], 6, 40, 20); popText(d.x, d.y - 24, 'NEW DRAGON!', '#fff', 13, 80); popText(d.x, d.y - 36, (d.tier ? TIERN[d.tier] + ' ' : '') + cap(d.type) + ' ' + STYN[d.style], NUMCOL[d.type], 11, 80);
+  sfx.hatch(); if (d.tier === 3) { fxBanner('GOLDEN DRAGON!', 'Worth the risk.', '#ffd700', 170); spark(d.x, d.y - 6, 40, ['#ffd700', '#fff'], 3.4, 3, 50, -.02); } addTrauma(.22); flashFx(COLORS[d.type], .2); freeze(4); buzz(20);
+}
+function dragHurtFx(d, dmg) { d.flash = 6; popText(d.x, d.y - 18, '-' + fmt(dmg), '#ff6a6a', 10); spark(d.x, d.y, 3, ['#ff6a6a'], 1.4, 2, 12); at(d.x, d.y, () => sfx.dragHurt()); }
+function koDragonFx(d) { popText(d.x, d.y - 20, 'KO!', '#ccc', 12, 60); spark(d.x, d.y, 12, ['#888', '#aaa'], 1.6, 3, 30, -.03, false); at(d.x, d.y, () => sfx.ko()); addTrauma(.1); }
+function reviveFx(d) { popText(d.x, d.y - 20, 'Back!', '#9aff9a', 11, 50); spark(d.x, d.y, 12, ['#9aff9a', '#fff'], 1.6, 2, 30, -.03); sfx.revive(); }
+function trainerHurtFx(dmg) {
+  popText(trainer.x, trainer.y - 22, '-' + fmt(dmg), '#ff4040', 15, 50); spark(trainer.x, trainer.y - 6, 14, ['#c01818', '#ff4040'], 2.6, 3, 24, .08, false);
+  sfx.hurt(); addTrauma(.55); freeze(4); flashFx('#ff2020', .28); buzz(40);
+}
+function trainerKoFx() { spark(trainer.x, trainer.y - 6, 30, ['#c01818', '#ff6a6a', '#fff'], 3.6, 3, 40, .05); popText(trainer.x, trainer.y - 30, 'KNOCKED OUT!', '#ff6a6a', 14, 90); sfx.ko(); addTrauma(.8); flashFx('#ff2020', .4); buzz(120); }
+function respawnFx() { spark(trainer.x, trainer.y - 6, 22, ['#8fd0ff', '#fff'], 2.4, 3, 36, -.03); ringFx(trainer.x, trainer.y, '#8fd0ff', 6, 34, 18); sfx.revive(); popText(trainer.x, trainer.y - 30, 'Respawned!', '#8fd0ff', 12, 60); }
+function healCampFx(n) { if (n < .5) return; popText(CX, CY - 30, '+' + fmt(n), '#7aff7a', 14, 70); spark(CX, CY, 18, ['#7aff7a', '#fff'], 1.8, 2.5, 40, -.04); ringFx(CX, CY, '#7aff7a', 8, 36, 20); fireFlash = 8; sfx.heal(); }
+function warnFx(m) { if (Math.hypot(m.x - trainer.x, m.y - trainer.y) < 220) sfx.warn(); }
+function dashFx(m) { if (Math.hypot(m.x - trainer.x, m.y - trainer.y) < 260) sfx.dash(); }
+function waveFx() { sfx.wave(); fxBanner('WAVE ' + wave, 'Incoming!', '#ffe27a', 120); addTrauma(.12); }
+function nightFx() { sfx.night(); addTrauma(.6); flashFx('#1a0030', .5); fxBanner(wave === FINAL_WAVE ? 'NIGHTMARE OF NIGHTMARES' : 'MEGA WAVE ' + wave, wave === FINAL_WAVE ? 'The Nightmare Lord awakens...' : 'Night falls - get to the camp!', wave === FINAL_WAVE ? '#ff2a2a' : '#ff5a5a', wave === FINAL_WAVE ? 280 : 230); }
+function bannerClear(wasMega) {
+  if (wasMega) fxBanner('DAWN BREAKS!', 'MEGA WAVE survived - campfire healed!', '#ffe27a', 200);
+  else { sfx.clear(); fxBanner('WAVE ' + wave + ' CLEARED', (wave + 1) % MEGA_EVERY === 0 ? 'Night is coming...' : 'Campfire healed a bit', '#a8ff9a', 130); }
+}
+function dawnFx() {
+  sfx.dawn(); flashFx('#fff2b0', .6); addTrauma(.1);
+  for (let i = 0; i < 60; i++) emit({ x: camX + Math.random() * W, y: camY + Math.random() * H, vx: (Math.random() - .5) * .3, vy: -.3 - Math.random() * .6, g: 0, life: 90 + Math.random() * 60, size: 2 + Math.random() * 2, col: ['#fff2a0', '#ffd23a', '#fff'][i % 3], add: true, jit: true, shr: true });
+}
+function gameOverFx() { sfx.over(); addTrauma(1); flashFx('#ff2020', .5); spark(CX, CY, 60, ['#ff7a1a', '#ffd23a', '#fff'], 4, 3, 50, .02); buzz(200); }
+
+// ---------- per-frame upkeep ----------
+function fxFrame() { // runs every rendered frame, even in hit-stop / menus
+  trauma = Math.max(0, trauma - .03); flash.a = Math.max(0, flash.a - .025);
+  fireShow = fireHp >= fireShow ? fireHp : Math.max(fireHp, fireShow - Math.max(.12, (fireShow - fireHp) * .05));
+  tShow = tHp >= tShow ? tHp : Math.max(tHp, tShow - Math.max(.2, (tShow - tHp) * .05));
+}
+function fxStep() { // runs every game tick
+  fxT++;
+  if (comboT > 0 && --comboT === 0) combo = 0;
+  if (killPulse > 0) killPulse--; if (fireFlash > 0) fireFlash--; if (trFlash > 0) trFlash--;
+  if (banner && ++banner.t > banner.max) banner = null;
+  for (const p of parts) { p.x += p.vx; p.y += p.vy; p.vy += p.g; if (p.drag) { p.vx *= p.drag; p.vy *= p.drag; } if (p.jit) p.vx += (Math.random() - .5) * .08; p.life--; }
+  parts = parts.filter(p => p.life > 0);
+  for (const q of pops) { q.x += q.vx; q.y += q.vy; q.vy *= .94; q.t++; }
+  pops = pops.filter(q => q.t < q.max);
+  enemies.forEach(e => { if (e.flash > 0) e.flash--; if (e.rc > 0) e.rc--; if (e.slow > 0 && fxT % 9 === 0) spark(e.x, e.y - 4, 1, ['#9ae6ff'], .3, 2, 18, -.01); });
+  dragons.forEach(d => { if (d.flash > 0) d.flash--; if (d.at > 0) d.at--; if (d.born > 0) d.born--; if (d.tier === 3 && !(d.down > 0) && fxT % 8 === 0) spark(d.x + (Math.random() - .5) * 16, d.y - 6, 1, ['#ffd700', '#fff'], .3, 2, 26, -.02); if (d.glow > 0) { d.glow--; if (d.glow % 3 === 0) spark(d.x + (Math.random() - .5) * 16, d.y + 4, 1, ['#ffe03a', '#fff'], .4, 2, 30, -.04); } });
+  if (gameOver) { if (fxT % 3 === 0) emit({ x: CX + (Math.random() - .5) * 10, y: CY, vx: (Math.random() - .5) * .3, vy: -.5, g: -.005, life: 80, size: 4, col: '#666', add: false, shr: true, jit: true }); ambient(); return; }
+  // embers rising from the campfire, more of them at night
+  if (fxT % (night ? 2 : 4) === 0) emit({ x: CX + (Math.random() - .5) * 10, y: CY - 4, vx: (Math.random() - .5) * .3, vy: -.5 - Math.random() * .6, g: -.004, life: 70 + Math.random() * 30, size: 2, col: Math.random() < .5 ? '#ffb03a' : '#ff7a1a', add: true, jit: true, shr: true });
+  // twinkles on eggs lying in the forest
+  if (fxT % 6 === 0) wild.forEach(e => { if (e.x > camX - 10 && e.x < camX + W + 10 && e.y > camY - 10 && e.y < camY + H + 10 && Math.random() < (e.gold ? .9 : e.style === 'spell' ? .5 : .2 + (e.tier || 0) * .12)) emit({ x: e.x + (Math.random() - .5) * 14, y: e.y + (Math.random() - .5) * 16, vx: 0, vy: -.2, g: 0, life: 24, size: 2, col: e.gold || e.style === 'spell' ? '#ffd700' : TIERCOL[e.tier || 0], add: true, shr: true }); });
+  // campfire damage is shown as one number every 1/3 second instead of a flood
+  if (campAcc > 0 && ++campT >= 20) { popText(CX + (Math.random() - .5) * 20, CY - 26, '-' + fmt(campAcc), '#ff5a2a', 12, 40); fireFlash = 6; addTrauma(.08); spark(CX, CY - 4, 6, ['#ff7a1a', '#ffd23a'], 2, 2.5, 20, -.03); sfx.campHit(); campAcc = 0; campT = 0; }
+  // trainer dust + quiet footsteps
+  if (deadT === 0 && Math.abs(tvx) + Math.abs(tvy) > .5 && fxT % 5 === 0) { spark(trainer.x + (Math.random() - .5) * 6, trainer.y + 8, 2, ['#c9b98a', '#8f8a60'], .5, 2, 18, -.01, false); sfx.step(); }
+  if (((fireHp / up.fireMax < .3) || (deadT === 0 && tHp / up.tMax < .25)) && fxT % 58 === 0) sfx.heart();
+  ambient();
+}
+function shadow(x, y, w) { ctx.globalAlpha = .28; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(Math.round(x), Math.round(y), w, w * .4, 0, 0, 6.283); ctx.fill(); ctx.globalAlpha = 1; }
+function drawParts(addPass) {
+  if (addPass) ctx.globalCompositeOperation = 'lighter';
+  for (const p of parts) {
+    if (!!p.add !== addPass || p.x < camX - 8 || p.x > camX + W + 8 || p.y < camY - 8 || p.y > camY + H + 8) continue;
+    const k = p.life / p.max, s = Math.max(1, Math.round(p.size * (p.shr ? k : 1)));
+    ctx.globalAlpha = Math.min(1, k * 1.6); ctx.fillStyle = p.col; ctx.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+}
+function drawPops() {
+  ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+  for (const q of pops) {
+    if (q.x < camX - 60 || q.x > camX + W + 60 || q.y < camY - 20 || q.y > camY + H + 20) continue;
+    const p = q.t / q.max, sc = q.t < 6 ? 1.6 - q.t * .1 : 1;
+    ctx.globalAlpha = p > .7 ? (1 - p) / .3 : 1; ctx.font = 'bold ' + Math.round(q.size * sc) + 'px monospace'; ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+    ctx.strokeText(q.txt, Math.round(q.x), Math.round(q.y)); ctx.fillStyle = q.col; ctx.fillText(q.txt, Math.round(q.x), Math.round(q.y));
+  }
+  ctx.globalAlpha = 1; ctx.textAlign = 'left';
+}
+function drawScreenFx() {
+  if (flash.a > .005) { ctx.globalAlpha = Math.min(1, flash.a); ctx.fillStyle = flash.col; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+  const lowF = fireHp / up.fireMax, lowT = deadT > 0 ? 1 : tHp / up.tMax; let v = 0;
+  if (hurt > 0) v = hurt / 20 * .55;
+  if (lowF < .3 && !gameOver) v = Math.max(v, (1 - lowF / .3) * (.25 + .15 * Math.sin(time / 7)));
+  if (lowT < .25) v = Math.max(v, (1 - lowT / .25) * (.2 + .1 * Math.sin(time / 6)));
+  if (v > .01) { const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .75); g.addColorStop(0, 'rgba(200,0,0,0)'); g.addColorStop(1, 'rgba(200,0,0,' + Math.min(.8, v) + ')'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+}
+function drawBanner() {
+  if (!banner) return; const b = banner, k = easeOutBack(Math.min(1, b.t / 14)), a = b.t > b.max - 30 ? Math.max(0, (b.max - b.t) / 30) : 1;
+  ctx.save(); ctx.translate(W / 2, 205); ctx.globalAlpha = .4 * a; ctx.fillStyle = '#000'; ctx.fillRect(-W / 2, -24 * k, W, 56 * k);
+  ctx.globalAlpha = a; ctx.scale(k, k); ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+  ctx.font = 'bold 26px monospace'; ctx.lineWidth = 5; ctx.strokeStyle = '#000'; ctx.strokeText(b.title, 0, 0); ctx.fillStyle = b.col; ctx.fillText(b.title, 0, 0);
+  ctx.font = '13px monospace'; ctx.lineWidth = 3; ctx.strokeText(b.sub, 0, 22); ctx.fillStyle = '#fff'; ctx.fillText(b.sub, 0, 22);
+  ctx.restore(); ctx.globalAlpha = 1; ctx.textAlign = 'left';
+}
+function drawCombo() {
+  if (combo < 3) return; const pulse = killPulse * .04, sz = Math.round((14 + Math.min(12, combo * .35)) * (1 + pulse)), col = combo >= 20 ? '#ff4a4a' : combo >= 10 ? '#ff9a3a' : '#ffe03a';
+  ctx.save(); ctx.textAlign = 'center'; ctx.lineJoin = 'round'; ctx.font = 'bold ' + sz + 'px monospace'; ctx.lineWidth = 4; ctx.strokeStyle = '#000';
+  ctx.strokeText('COMBO x' + combo, W / 2, 28); ctx.fillStyle = col; ctx.fillText('COMBO x' + combo, W / 2, 28);
+  px(W / 2 - 30, 34, 60, 4, '#000'); px(W / 2 - 29, 35, 58 * comboT / 140, 2, col); ctx.restore();
+}
+
+addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); if (e.key.toLowerCase() === 'm' && !e.repeat) toggleMute(); if (e.key.toLowerCase() === 'r' && !e.repeat) setRaid(!raid); if (e.key.toLowerCase() === 'g' && !e.repeat) bigMap = !bigMap; if (e.key.toLowerCase() === 'e' && !e.repeat) navStart(); if ((e.key.toLowerCase() === 'p' || e.key === 'Escape') && !e.repeat) setPause(!paused); });
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+c.addEventListener('pointerdown', e => { joy.on = true; joy.ox = e.clientX; joy.oy = e.clientY; joy.dx = 0; joy.dy = 0; try { c.setPointerCapture(e.pointerId); } catch (x) {} });
+c.addEventListener('pointermove', e => { if (!joy.on) return; joy.dx = e.clientX - joy.ox; joy.dy = e.clientY - joy.oy; });
+['pointerup', 'pointercancel'].forEach(t => c.addEventListener(t, () => { joy.on = false; joy.dx = joy.dy = 0; }));
+document.getElementById('again').onclick = reset;
+document.getElementById('start').insertBefore(paceRow(), document.getElementById('go')); document.getElementById('pause').insertBefore(paceRow(), document.getElementById('resume').nextSibling);
+document.querySelectorAll('.pb').forEach(x => x.classList.toggle('on', +x.dataset.v === TUNE.pace));
+document.getElementById('go').onclick = () => { reset(); started = true; document.getElementById('start').style.display = 'none'; };
+document.getElementById('menu').onclick = showMenu; document.getElementById('menu2').onclick = showMenu;
+document.getElementById('resume').onclick = () => setPause(false); document.getElementById('restart').onclick = () => { setPause(false); reset(); };
+document.getElementById('navb').onclick = navStart;
+function syncArrows() { const b = document.getElementById('arrb'); b.style.opacity = arrowsOn ? 1 : .45; b.textContent = arrowsOn ? '📍' : '🚫'; }
+document.getElementById('arrb').onclick = () => { arrowsOn = !arrowsOn; try { localStorage.setItem('dcd_arrows', arrowsOn ? '1' : '0'); } catch (e) {} syncArrows(); popText(trainer.x, trainer.y - 30, 'Cave arrows ' + (arrowsOn ? 'ON' : 'OFF'), '#e0a8ff', 12, 60); };
+syncArrows();
+document.getElementById('pz').onclick = () => setPause(!paused);
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
+{ const b = bestGet(); if (b.wave) document.getElementById('startbest').textContent = 'Best wave: ' + b.wave + ' · Victories: ' + (b.wins || 0); } document.getElementById('raid').onclick = () => setRaid(!raid); document.getElementById('mapb').onclick = () => { bigMap = !bigMap; };
+document.getElementById('fs').onclick = () => {
+  try { (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {}); } catch (e) {}
+};
+
+const trees = [];
+for (let i = 0; i < WW * WH / 3000; i++) {
+  const x = Math.random() * WW, y = Math.random() * WH;
+  if (Math.hypot(x - CX, y - CY) > 380) trees.push({ x: Math.round(x / 16) * 16, y: Math.round(y / 16) * 16 });
+}
+const smallTrees = []; // forest-style trees scattered inside the campfire light
+for (let i = 0, tries = 0; i < 22 && tries < 800; tries++) {
+  const a = Math.random() * Math.PI * 2, d = 140 + Math.random() * 140, x = Math.round((CX + Math.cos(a) * d) / 16) * 16, y = Math.round((CY + Math.sin(a) * d) / 16) * 16;
+  if (smallTrees.some(t => Math.hypot(t.x - x, t.y - y) < 56)) continue;
+  smallTrees.push({ x, y }); i++;
+}
+function resize() {
+  const s = Math.min(innerWidth, innerHeight) / 480;
+  W = Math.round(innerWidth / s); H = Math.round(innerHeight / s);
+  c.width = W; c.height = H; nc.width = W; nc.height = H;
+}
+addEventListener('resize', resize);
+
+function addGuards(x, y, n) { // monsters linger around the good eggs
+  for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, r = 45 + Math.random() * 50, gx = x + Math.cos(a) * r, gy = y + Math.sin(a) * r;
+    if (Math.hypot(gx - CX, gy - CY) > CAMP + 60) monsters.push({ x: gx, y: gy, hx: x, hy: y, wx: gx, wy: gy, wt: 0, cd: 0, dc: 0, wind: 0, dashT: 0, vx: 0, vy: 0 }); }
+}
+function addElites(x, y, n) { // stronger guards that only exist during a nightmare wave
+  for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, r = 50 + Math.random() * 50, gx = x + Math.cos(a) * r, gy = y + Math.sin(a) * r;
+    if (Math.hypot(gx - CX, gy - CY) > CAMP + 60) monsters.push({ x: gx, y: gy, hx: x, hy: y, wx: gx, wy: gy, wt: 0, cd: 0, dc: 0, wind: 0, dashT: 0, vx: 0, vy: 0, elite: true }); }
+}
+function spawnWild(near, gold) { // far from the fire = fewer eggs, but stronger and better guarded
+  for (let i = 0; i < 30; i++) {
+    const a = Math.random() * 6.283, d = gold ? 700 + Math.random() * 1900 : near ? 150 + Math.random() * 300 : 160 + 2640 * Math.pow(Math.random(), 1.2);
+    const x = CX + Math.cos(a) * d, y = CY + Math.sin(a) * d;
+    if (Math.hypot(x - trainer.x, y - trainer.y) > 60) {
+      const tier = gold ? 3 : eggTier(d), far = Math.min(1, d / 3000), r = Math.random() - far * .15 - tier * .04 - (gold ? .1 : 0);
+      wild.push({ type: TYPES[Math.floor(Math.random() * 4)], style: r < .15 ? 'spell' : r < .575 ? 'melee' : 'range', x, y, tier, gold: !!gold });
+      addGuards(x, y, tier === 3 ? 2 : tier === 2 ? 1 + (Math.random() < .5 ? 1 : 0) : tier === 1 && Math.random() < .4 ? 1 : 0);
+      return;
+    }
+  }
+}
+function spawnMonster() {
+  for (let i = 0; i < 30; i++) {
+    const x = 30 + Math.random() * (WW - 60), y = 40 + Math.random() * (WH - 70);
+    if (Math.hypot(x - CX, y - CY) > CAMP + 60 && Math.hypot(x - trainer.x, y - trainer.y) > 300) {
+      monsters.push({ x, y, hx: x, hy: y, wx: x, wy: y, wt: 0, cd: 0, dc: 0, wind: 0, dashT: 0, vx: 0, vy: 0 }); return;
+    }
+  }
+}
+const CARD_POOL = [
+  { ic: '🏠', tt: 'Dragon Den', ds: 'Your dragon limit grows by 2.', ok: () => dragonCap() < 12, fn: () => { up.cap = (up.cap || 0) + 2; } },
+  { ic: '\u{1F409}', tt: 'Dragon Training', ds: 'All your dragons gain +1 level and heal fully.', ok: () => dragons.length > 0, fn: () => dragons.forEach(d => { d.lvl = Math.min(8, d.lvl + 1); d.hp = maxHpOf(d); levelUpFx(d); }) },
+  { ic: '\u{1F95A}', tt: 'Gift Egg', ds: 'A random dragon egg appears at the campfire and hatches.', ok: () => false, fn: () => { const r = Math.random(); eggs.push({ type: TYPES[Math.floor(Math.random() * 4)], style: r < .2 ? 'spell' : r < .6 ? 'melee' : 'range', x: CX + (Math.random() - .5) * 70, y: CY + 25 + Math.random() * 25, timer: 80 }); } },
+  { ic: '\u2694\uFE0F', tt: 'Sharp Claws', ds: 'Dragon damage +25%.', fn: () => { up.dmg *= 1.25; } },
+  { ic: '\u26A1', tt: 'Fury', ds: 'Dragons attack 20% faster.', fn: () => { up.rate *= 1.2; } },
+  { ic: '\u{1F97E}', tt: 'Swift Boots', ds: 'You run 15% faster.', fn: () => { up.speed *= 1.15; } },
+  { ic: '\u{1F6E1}\uFE0F', tt: 'Thick Skin', ds: 'Your max health +30 and fully healed.', fn: () => { up.tMax += 30; tHp = up.tMax; } },
+  { ic: '\u{1F525}', tt: 'Eternal Flame', ds: 'Campfire max health +30 and fully healed.', fn: () => { up.fireMax += 30; fireHp = up.fireMax; } },
+  { ic: '\u2B55', tt: 'Wider Camp', ds: 'The campfire safe zone grows outward (+50).', ok: () => CAMP < 360, fn: () => { CAMP += 50; } },
+  { ic: '\u{1F9F2}', tt: 'Egg Magnet', ds: 'You pick up eggs from much farther away.', ok: () => up.magnet < 3, fn: () => { up.magnet *= 1.6; } },
+  { ic: '\u{1FA79}', tt: 'Healing Warmth', ds: 'You and your dragons heal 2x faster at camp.', fn: () => { up.regen *= 2; } },
+  { ic: '\u{1F4A4}', tt: 'Quick Revive', ds: 'Knocked-out dragons wake up 40% sooner.', fn: () => { up.revive *= .6; } }
+];
+function offerCards() {
+  choosing = true; joy.on = false; joy.dx = joy.dy = 0;
+  const pool = CARD_POOL.filter(k => !k.ok || k.ok()), pick = [];
+  while (pick.length < 3 && pool.length) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  const row = document.getElementById('cardrow'); row.innerHTML = '';
+  pick.forEach(k => {
+    const b = document.createElement('button'); b.className = 'card';
+    b.innerHTML = '<div class="ic">' + k.ic + '</div><div class="tt">' + k.tt + '</div><div>' + k.ds + '</div>';
+    b.onmouseenter = () => sfx.tick(); b.onclick = () => { sfx.pick(); flashFx('#ffe27a', .25); k.fn(); choosing = false; document.getElementById('cards').style.display = 'none'; };
+    row.appendChild(b);
+  });
+  document.getElementById('cards').style.display = 'flex'; sfx.cards();
+}
+function mkGlow(sz, c0, c1) { const g = document.createElement('canvas'); g.width = g.height = sz; const x = g.getContext('2d'), gr = x.createRadialGradient(sz / 2, sz / 2, 2, sz / 2, sz / 2, sz / 2); gr.addColorStop(0, c0); gr.addColorStop(1, c1); x.fillStyle = gr; x.fillRect(0, 0, sz, sz); return g; }
+const glowImg = mkGlow(64, 'rgba(255,170,60,.3)', 'rgba(255,120,20,0)'), holeImg = mkGlow(160, 'rgba(0,0,0,1)', 'rgba(0,0,0,0)');
+let bugs = [];
+function updateBugs() { // fireflies circle around the trees near the campfire
+  if (!bugs.length) for (let i = 0; i < 16; i++) { const t = smallTrees[i % smallTrees.length]; bugs.push({ t, ang: Math.random() * 6.283, rad: 16 + Math.random() * 14, sp: (.015 + Math.random() * .02) * (Math.random() < .5 ? -1 : 1), ph: Math.random() * 6.283, x: t.x, y: t.y }); }
+  bugs.forEach(b => {
+    b.ang += b.sp; const r = b.rad + Math.sin(time / 40 + b.ph) * 4;
+    b.x = b.t.x + 8 + Math.cos(b.ang) * r; b.y = b.t.y + 2 + Math.sin(b.ang) * r * .8;
+  });
+}
+function reset() {
+  up = { speed: 1, tMax: 100, fireMax: 100, dmg: 1, rate: 1, revive: 1, regen: 1, magnet: 1 }; CAMP = 300; choosing = false; navStop(); document.getElementById('cards').style.display = 'none';
+  fireHp = 100; enemies = []; dragons = []; shots = []; eggs = []; wild = []; carry = null; spells = []; fx = [];
+  spawnTimer = 0; wave = 0; waveLeft = 0; waveBreak = true; waveTimer = 1500; breakTotal = 1500; waveTotal = 1; waveMsgT = 0; waveMsg = ''; eggTimer = 0; gameOver = false; time = 0; kills = 0; night = false; nightFade = 0; mi = 0; deadT = 0; dawn = 0; dropT = 0; eggMsgT = 0; dayPos = 0;
+  trainer = { x: CX + 27, y: CY + 17 };
+  monsters = []; caves = []; { const off = Math.random() * 6.283; for (let i = 0; i < 4; i++) { const a = off + i * Math.PI / 2 + (Math.random() - .5) * .5, d = 1900 + Math.random() * 500; caves.push({ x: CX + Math.cos(a) * d, y: CY + Math.sin(a) * d, hp: 900, max: 900, alive: true, t: 0, flash: 0 }); } } raid = false; setRaid(false); for (let i = 0; i < 14; i++) spawnWild(i < 2);
+  tHp = 100; hurt = 0; msgT = 0; duskPrev = false; nightPrev = false; nightsDone = 0;
+  for (let i = 0; i < 70; i++) spawnMonster();
+  juiceReset();
+  document.getElementById('over').style.display = 'none'; fxBanner('THE CAVES', 'Monsters pour out of 4 caves, only at night.', '#d9a0ff', 240);
+}
+function spawnEnemy(from) {
+  const a = Math.random() * Math.PI * 2, R = night ? 420 + Math.random() * 260 : 400;
+  let hp = night ? Math.ceil((4 + wave * .8) * (1 + .08 * dragons.length)) : Math.ceil((4 + Math.floor(wave * 1.1)) * (1 + mi * .5) * (1 + .1 * dragons.length)), sp = (.35 + Math.random() * .2 + Math.min(.15, wave * .01)) * (night ? 1.3 : 1 + mi * .3), kind = 0; const r = Math.random();
+  if (wave >= 4 && r < .14) kind = 3; else if (wave >= 3 && r < .3) kind = 2; else if (wave >= 2 && r < .46) kind = 1; // 1 brute, 2 runner, 3 spitter
+  if (kind === 1) { hp = Math.ceil(hp * 3); sp *= .6; } else if (kind === 2) { hp = Math.max(2, Math.ceil(hp * .5)); sp *= 1.9; } else if (kind === 3) hp = Math.ceil(hp * .8);
+  const cv = from ? [from] : caves.filter(c => c.alive), c0 = cv.length ? cv[Math.floor(Math.random() * cv.length)] : null;
+  enemies.push({ x: c0 ? c0.x + (Math.random() - .5) * 50 : CX + Math.cos(a) * R, y: c0 ? c0.y + (Math.random() - .5) * 50 : CY + Math.sin(a) * R, hp, speed: c0 ? sp * 2 : sp, slow: 0, last: null, kind });
+}
+function update() {
+  if (gameOver) { fxStep(); return; }
+  if (!started || paused) return;
+  if (choosing) return;
+  if (hitstop > 0) { hitstop--; return; }
+  updateBugs();
+  time++; eggTimer++;
+  // continuous cycle clock: every wave = 1 unit (half break, half fight); 5 units = one full day
+  { const act = Math.max(0, Math.min(1, 1 - (waveLeft + enemies.length) / waveTotal)), brk = Math.max(0, Math.min(1, 1 - waveTimer / breakTotal));
+    const p = waveBreak ? wave + .5 * brk : wave - .5 + .5 * act;
+    dayPos = (p % MEGA_EVERY) / MEGA_EVERY; }
+  const dk = night ? 1 : Math.min(.78, dayPos * .85);
+  nightFade += Math.max(-.004, Math.min(.006, dk - nightFade));
+  mi = (Math.exp(4 * nightFade) - 1) / (Math.exp(4) - 1); // exponential monster intensity: slow at first, explosive near the nightmare
+  if (dawn > 0) dawn = Math.max(0, dawn - 1 / 1100);
+  let mx = (keys.arrowright || keys.d ? 1 : 0) - (keys.arrowleft || keys.a ? 1 : 0);
+  let my = (keys.arrowdown || keys.s ? 1 : 0) - (keys.arrowup || keys.w ? 1 : 0);
+  if (joy.on) { const m = Math.hypot(joy.dx, joy.dy); if (m > 8) { const k = Math.min(m, 40) / 40; mx = joy.dx / m * k; my = joy.dy / m * k; } }
+  if (nav) { const nd = Math.hypot(nav.x - trainer.x, nav.y - trainer.y);
+    if (mx || my || night || deadT > 0 || !nav.alive) navStop(mx || my ? 'Navigation cancelled' : null);
+    else if (nd < 130) navStop('Arrived at the cave! Dragons attack!');
+    else { mx = (nav.x - trainer.x) / nd; my = (nav.y - trainer.y) / nd; } }
+  if (deadT > 0) { mx = 0; my = 0; }
+  const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
+  const SPD = 2.6 * up.speed * (carry ? 1 - .04 * (carry.tier || 0) : 1);
+  trainer.x = Math.max(8, Math.min(WW - 8, trainer.x + mx * SPD));
+  trainer.y = Math.max(14, Math.min(WH - 8, trainer.y + my * SPD));
+  tvx = mx * SPD; tvy = my * SPD;
+  fxStep();
+
+  // wild monsters hunt the trainer, but only outside the camp area
+  const inCamp0 = Math.hypot(trainer.x - CX, trainer.y - CY) < CAMP, inCamp = inCamp0 || deadT > 0;
+  if (inCamp0 && deadT === 0) tHp = Math.min(up.tMax, tHp + .08 * up.regen);
+  if (hurt > 0) hurt--; if (msgT > 0) msgT--; if (dropT > 0) dropT--; if (eggMsgT > 0) eggMsgT--; if (waveMsgT > 0) waveMsgT--;
+  if (time % 60 === 0 && dragons.length > 3 && fireHp > up.fireMax * .25) fireHp -= .06 * (dragons.length - 3); // upkeep: extra dragons burn firewood
+  if (!night && time % 600 === 0 && monsters.length < 80) spawnMonster();
+  const popCap = 70 + Math.round(mi * 50);
+  if (!night && time % 150 === 0 && monsters.length < popCap && mi > .03) spawnMonster();
+  if (time % 120 === 0 && monsters.length > popCap) { const i = monsters.findIndex(m => Math.hypot(m.x - trainer.x, m.y - trainer.y) > 500); if (i >= 0) monsters.splice(i, 1); }
+  monsters.forEach(m => {
+    m.cd--;
+    const dt = Math.hypot(trainer.x - m.x, trainer.y - m.y), dh = Math.hypot(m.x - m.hx, m.y - m.hy);
+    let gx, gy, sp;
+    m.dc--;
+    if (m.wind > 0) { m.wind--; if (m.wind === 0) { m.lock = Math.random() < DASH_ACC; m.dashT = m.lock ? 36 : 16; dashFx(m); } gx = m.x; gy = m.y; sp = 0; }
+    else if (m.dashT > 0) {
+      m.dashT--;
+      if (m.lock) { // accurate dash: leads the target and steers toward where the trainer is going
+        const spd = Math.hypot(m.vx, m.vy) || 1, lead = Math.min(12, dt / spd), ex = trainer.x + tvx * lead - m.x, ey = trainer.y + tvy * lead - m.y, el = Math.hypot(ex, ey) || 1;
+        m.vx += (ex / el * spd - m.vx) * .4; m.vy += (ey / el * spd - m.vy) * .4;
+        const nl = Math.hypot(m.vx, m.vy) || 1; m.vx = m.vx / nl * spd; m.vy = m.vy / nl * spd;
+      }
+      m.x += m.vx; m.y += m.vy; gx = m.x; gy = m.y; sp = 0; }
+    else if (!inCamp && dt < 140 + 760 * mi && dh < 320 + 2000 * mi) {
+      gx = trainer.x; gy = trainer.y; sp = 1.7 * (1 + mi) * (m.elite ? 1.15 : 1);
+      if (m.dc <= 0 && dt > 45 && dt < 115) {
+        m.wind = Math.round(22 - 10 * mi); m.dc = Math.round(220 - 110 * mi); sp = 0; warnFx(m);
+        const ds = 5.5 + 3.5 * mi;
+        m.vx = (trainer.x - m.x) / dt * ds; m.vy = (trainer.y - m.y) / dt * ds;
+      }
+    }
+    else if (night && !m.elite) { gx = CX; gy = CY; sp = 2; }
+    else if (dh >= 320) { gx = m.hx; gy = m.hy; sp = 1.2; }
+    else {
+      if (--m.wt <= 0) { m.wt = 90 + Math.random() * 120; m.wx = m.hx + (Math.random() - .5) * 120; m.wy = m.hy + (Math.random() - .5) * 120; }
+      gx = m.wx; gy = m.wy; sp = .4;
+    }
+    const dx = gx - m.x, dy = gy - m.y, d = Math.hypot(dx, dy);
+    if (d > 2) { m.x += dx / d * sp; m.y += dy / d * sp; }
+    const dc = Math.hypot(m.x - CX, m.y - CY);
+    if (dc < CAMP) { m.x = CX + (m.x - CX) / dc * CAMP; m.y = CY + (m.y - CY) / dc * CAMP; }
+    if (dt < 14 && dt > 0 && m.cd <= 0 && !inCamp) {
+      { const hd = (m.dashT > 0 ? 16 : 12) * (1 + mi * .6) * (m.elite ? 1.6 : 1); tHp -= hd; trainerHurtFx(hd); } m.cd = 50; hurt = 20; if (m.dashT > 0) m.dashT = 0;
+      if (carry) { wild.push({ type: carry.type, style: carry.style, tier: carry.tier || 0, gold: !!carry.gold, x: trainer.x, y: trainer.y }); carry = null; dropT = 90; eggMsgT = 150; eggLostFx(); }
+      trainer.x = Math.max(8, Math.min(WW - 8, trainer.x + (trainer.x - m.x) / dt * 14));
+      trainer.y = Math.max(14, Math.min(WH - 8, trainer.y + (trainer.y - m.y) / dt * 14));
+    }
+  });
+  if (deadT === 0 && tHp <= 0) { tHp = 0; deadT = RESPAWN_SEC * 60; carry = null; msgT = 180; hurt = 0; trainerKoFx(); }
+  else if (deadT > 0 && --deadT === 0) { tHp = up.tMax; trainer = { x: CX + 27, y: CY + 17 }; hurt = 0; respawnFx(); }
+
+  // pick up wild eggs, drop them at the campfire to hatch
+  if (!carry && dropT <= 0 && deadT <= 0) {
+    for (let i = 0; i < wild.length; i++) {
+      if (Math.hypot(wild[i].x - trainer.x, wild[i].y - (trainer.y - 4)) < 18 * up.magnet) { const w = wild[i]; carry = { type: w.type, style: w.style, tier: w.tier || 0, gold: !!w.gold }; pickupFx(w); wild.splice(i, 1); break; }
+    }
+  } else if (carry && eggs.length < 2 && Math.hypot(trainer.x - CX, trainer.y - CY) < 36 && denCheck()) {
+    const ne = { type: carry.type, style: carry.style, tier: carry.tier || 0, gold: !!carry.gold, x: CX + (Math.random() - .5) * 70, y: CY + 25 + Math.random() * 25, timer: dragons.length + eggs.length === 0 ? 240 : 900 + (carry.tier || 0) * 300 }; eggs.push(ne); dropFx(ne);
+    carry = null;
+  }
+  if (eggTimer > 800) { eggTimer = 0; if (wild.filter(e => !e.gold).length < 16) spawnWild(); }
+  eggs.forEach(e => { e.timer--; eggTick(e); });
+  eggs.filter(e => e.timer <= 0).forEach(e => { const tr = e.tier || 0, nd = { type: e.type, style: e.style, x: e.x, y: e.y, cd: 0, k: 0, lvl: TL[tr], tier: tr, slot: dragons.length, dir: 1, hp: 1, down: 0 }; nd.hp = maxHpOf(nd); dragons.push(nd); hatchFx(nd); });
+  eggs = eggs.filter(e => e.timer > 0);
+
+  // enemies come in waves: a burst, then a rest until the next one
+  if (waveLeft > 0) {
+    if (--spawnTimer <= 0) { spawnEnemy(); waveLeft--; spawnTimer = night ? TUNE.nightGap : TUNE.dayGap; }
+  } else if (enemies.length === 0) {
+    if (!waveBreak) {
+      const wasMega = night; night = false; if (wasMega) { dawn = 1; dawnFx(); offerCards(); }
+      waveBreak = true; waveTimer = wasMega ? 2400 : 480; breakTotal = wasMega ? 2400 : 480; { const pre = fireHp; fireHp = Math.min(up.fireMax, fireHp + (wasMega ? 50 : 15)); healCampFx(fireHp - pre); }
+      waveMsg = wasMega ? 'MEGA WAVE survived! A bright morning rises! Campfire healed!' : 'Wave ' + wave + ' cleared! Campfire healed a bit.';
+      if ((wave + 1) % MEGA_EVERY === 0) waveMsg += ' Night is coming...';
+      waveMsgT = 200; bannerClear(wasMega);
+    } else if (--waveTimer <= 0) {
+      wave++; spawnTimer = 0; waveBreak = false;
+      if (wave % MEGA_EVERY === 0) { night = true; waveLeft = (wave === FINAL_WAVE ? 70 : 24) + wave * 2 + dragons.length * 3; if (!caves.some(c => c.alive)) waveLeft = Math.round(waveLeft * .5); if (wave === FINAL_WAVE) spawnBoss(); waveTotal = waveLeft; waveMsg = 'MEGA WAVE ' + wave + '! Night falls - get to the camp!'; waveMsgT = 260; nightFx(); }
+      else { waveBreak = true; waveTimer = 1200; breakTotal = 1200; }
+    }
+  }
+  { // dusk: golden eggs appear in the wild and fade when night falls
+    const dusk = !night && dayPos >= DUSK_AT;
+    if (dusk && !duskPrev) { const n = 3 + Math.min(2, Math.floor(wave / 5)); for (let i = 0; i < n; i++) spawnWild(false, true); sfx.dusk(); fxBanner('DUSK', 'Golden eggs have appeared! Be home before night.', '#ffd700', 190); flashFx('#ffd700', .15); }
+    duskPrev = dusk; caves.forEach(c => { if (c.t > 0) c.t--; if (c.flash > 0) c.flash--; });
+    if (night && !nightPrev) { setRaid(false); // nightmare: every roaming monster joins the attack on the camp; elite guards appear at the good eggs
+      monsters.filter(m => !m.elite).forEach(m => enemies.push({ x: m.x, y: m.y, hp: 3 + Math.floor(wave / 3), speed: 1.4 + Math.random() * .4, slow: 0, last: null, red: true }));
+      monsters = monsters.filter(m => m.elite);
+      wild.forEach(e => { if (e.tier >= 1) addElites(e.x, e.y, e.tier >= 2 ? 2 : 1); });
+      popText(trainer.x, trainer.y - 60, 'Elite guards stalk the wilds!', '#c06bff', 11, 100);
+    }
+    if (!night && nightPrev) { nightsDone++; // dawn: elites vanish, the roaming monsters return, eggs are guarded again
+      monsters.forEach(m => spark(m.x, m.y, 10, ['#c06bff', '#fff'], 1.6, 2.5, 26));
+      monsters = []; for (let i = 0; i < 70; i++) spawnMonster();
+      wild.forEach(e => { if (e.tier >= 1) addGuards(e.x, e.y, e.tier >= 2 ? 1 + (Math.random() < .5 ? 1 : 0) : Math.random() < .4 ? 1 : 0); });
+    }
+    nightPrev = night;
+    if (night && wild.some(e => e.gold)) { wild.filter(e => e.gold).forEach(e => { spark(e.x, e.y, 14, ['#ffd700', '#fff'], 1.6, 2.5, 30, -.03); popText(e.x, e.y - 14, 'faded...', '#ffd700', 10, 50); }); wild = wild.filter(e => !e.gold); }
+  }
+  enemies.forEach(en => {
+    en.cd = (en.cd || 0) - 1;
+    if (en.kind === 9) { // the Nightmare Lord: slow, huge, stomps dragons, you and the campfire
+      const bd = Math.hypot(CX - en.x, CY - en.y), nearD = dragons.some(dr => dr.down <= 0 && Math.hypot(dr.x - en.x, dr.y - en.y) < 70), nearT = deadT === 0 && Math.hypot(trainer.x - en.x, trainer.y - en.y) < 70;
+      if (en.cd <= 0 && (bd < 100 || nearD || nearT)) { en.cd = 70; ringFx(en.x, en.y, '#ff3030', 10, 70, 16); addTrauma(.5); sfx.boom();
+        dragons.forEach(dr => { if (dr.down <= 0 && Math.hypot(dr.x - en.x, dr.y - en.y) < 70) { dr.hp -= 28; dragHurtFx(dr, 28); } });
+        if (nearT) { tHp -= 30; trainerHurtFx(30); hurt = 20; }
+        if (bd < 100) { fireHp -= 8; campAcc += 8; } }
+      if (bd > 60) { const s = en.slow > 0 ? .5 : 1; en.x += (CX - en.x) / bd * en.speed * s; en.y += (CY - en.y) / bd * en.speed * s; if (en.slow > 0) en.slow--; }
+      return; }
+    if (en.kind === 3) { let t = null, bd = 90; dragons.forEach(dr => { if (dr.down > 0) return; const q = Math.hypot(dr.x - en.x, dr.y - en.y); if (q < bd) { bd = q; t = dr; } });
+      if (t) { if (en.cd <= 0) { const hd = 2.5 * (1 + mi * .5); t.hp -= hd; en.cd = 60; dragHurtFx(t, hd); fx.push({ kind: 'bolt', x: en.x, y: en.y, x2: t.x, y2: t.y, t: 8 }); } return; } }
+    let foe = null, fd = 22;
+    dragons.forEach(dr => { if (dr.down > 0 || en.kind === 2) return; const q = Math.hypot(dr.x - en.x, dr.y - en.y); if (q < fd) { fd = q; foe = dr; } });
+    if (foe) { if (en.cd <= 0) { { const hd = 3 * (1 + mi * .5) * (en.kind === 1 ? 2 : 1); foe.hp -= hd; en.cd = 30; dragHurtFx(foe, hd); } } return; }
+    if (inCamp0 && deadT === 0) { // camp attackers can hit you inside the safe zone, but never chase you outside it
+      const tx = trainer.x - en.x, ty = trainer.y - en.y, td = Math.hypot(tx, ty) || 1;
+      if (td < 14) { if (en.cd <= 0) { const hd = 6 * (1 + mi * .5); tHp -= hd; trainerHurtFx(hd); hurt = 20; en.cd = 45; } return; }
+      if (td < 110) { const s = en.slow > 0 ? .4 : 1; en.x += tx / td * en.speed * s; en.y += ty / td * en.speed * s; if (en.slow > 0) en.slow--; return; }
+    }
+    const dx = CX - en.x, dy = CY - en.y, d = Math.hypot(dx, dy);
+    if (d < 18) { const cd = .12 * (1 + mi * .6); fireHp -= cd; campAcc += cd; return; }
+    const s = en.slow > 0 ? .4 : 1;
+    en.x += dx / d * en.speed * s; en.y += dy / d * en.speed * s;
+    if (en.slow > 0) en.slow--;
+  });
+
+  // dragons move, chase enemies near the campfire, and fight
+  dragons.forEach(dr => {
+    const maxHp = maxHpOf(dr);
+    if (dr.down > 0) {
+      if (--dr.down === 0) { dr.hp = maxHp; dr.x = CX + (Math.random() - .5) * 60; dr.y = CY + 20 + Math.random() * 20; reviveFx(dr); }
+      return;
+    }
+    if (dr.hp <= 0) { dr.down = Math.round(600 * up.revive); koDragonFx(dr); return; }
+    if (Math.hypot(dr.x - CX, dr.y - CY) < 70) dr.hp = Math.min(maxHp, dr.hp + .03 * up.regen);
+    dr.cd--;
+    let target = null, best = 230;
+    if (raid) { best = 1e9; const chk = en => { const dt = Math.hypot(en.x - trainer.x, en.y - trainer.y), dd = Math.hypot(en.x - dr.x, en.y - dr.y), sc = dt + dd * .5; if ((dt < 260 || dd < 150) && sc < best) { best = sc; target = en; } }; enemies.forEach(chk); monsters.forEach(chk); }
+    else enemies.forEach(en => { const d = Math.hypot(en.x - CX, en.y - CY); if (d < best) { best = d; target = en; } });
+    let gx, gy, speed = 1;
+    if (target) {
+      const d = Math.hypot(target.x - dr.x, target.y - dr.y);
+      const sty = STYLE[dr.style];
+      gx = target.x; gy = target.y; speed = sty.speed;
+      if (d <= sty.range) {
+        speed = 0;
+        if (dr.cd <= 0) {
+          const dmg = STATS[dr.type].dmg * sty.dmg * (1 + .5 * (dr.lvl - 1)) * up.dmg * TD[dr.tier || 0];
+          if (dr.style === 'range') { shots.push({ x: dr.x, y: dr.y, target, type: dr.type, owner: dr }); atkFx(dr, target, 'range'); }
+          else if (dr.style === 'melee') { atkFx(dr, target, 'melee'); hitEnemy(target, dr, dmg); fx.push({ kind: 'slash', x: target.x, y: target.y, t: 10, col: COLORS[dr.type] }); }
+          else { spells.push({ x: target.x, y: target.y, t: 25, type: dr.type, owner: dr, dmg }); atkFx(dr, target, 'spell'); }
+          dr.cd = STATS[dr.type].cd * sty.cd / (up.rate * TR[dr.tier || 0]);
+        }
+      }
+    } else {
+      const a = dr.slot * 2.4;
+      if (raid) { const cv = caves.find(c => c.alive && (Math.hypot(c.x - dr.x, c.y - dr.y) < 170 || Math.hypot(c.x - trainer.x, c.y - trainer.y) < 200));
+        if (cv) { const cd = Math.hypot(cv.x - dr.x, cv.y - dr.y), sty = STYLE[dr.style]; gx = cv.x; gy = cv.y; speed = sty.speed;
+          if (cd <= sty.range + 28) { speed = 0; if (dr.cd <= 0) { const dmg = STATS[dr.type].dmg * sty.dmg * (1 + .5 * (dr.lvl - 1)) * up.dmg * TD[dr.tier || 0]; atkFx(dr, cv, dr.style); cv.hp -= dmg; cv.flash = 6; popText(cv.x + (Math.random() - .5) * 30, cv.y - 24, fmt(dmg), NUMCOL[dr.type], 11); if (cv.t <= 0 && cv.hp > 0) { spawnEnemy(cv); cv.t = 100; } dr.cd = STATS[dr.type].cd * sty.cd / (up.rate * TR[dr.tier || 0]); if (cv.hp <= 0) caveDown(cv); } } }
+        else { gx = trainer.x + Math.cos(a) * 36; gy = trainer.y + Math.sin(a) * 30; { const fd = Math.hypot(trainer.x - dr.x, trainer.y - dr.y); speed = fd > 400 ? 7 : fd > 150 ? 4.6 : fd > 70 ? 3.4 : 1.5; } } }
+      else { gx = CX + Math.cos(a) * 45; gy = CY + Math.sin(a) * 40; speed = Math.hypot(dr.x - CX, dr.y - CY) > 120 ? 3 : .9; }
+    }
+    const dx = gx - dr.x, dy = gy - dr.y, d = Math.hypot(dx, dy);
+    if (speed && d > 3) { dr.x += dx / d * speed; dr.y += dy / d * speed; if (Math.abs(dx) > 1) dr.dir = dx > 0 ? 1 : -1; }
+  });
+  shots.forEach(s => {
+    const dx = s.target.x - s.x, dy = s.target.y - s.y, d = Math.hypot(dx, dy);
+    if (d < 6) {
+      s.hit = true;
+      hitEnemy(s.target, s.owner, STATS[s.type].dmg * (1 + .5 * (s.owner.lvl - 1)) * up.dmg * TD[s.owner.tier || 0]);
+    } else { s.x += dx / d * 5; s.y += dy / d * 5; if (time % 2 === 0) spark(s.x, s.y, 1, [COLORS[s.type]], .25, 2, 12, 0); }
+  });
+  shots = shots.filter(s => !s.hit && (enemies.includes(s.target) || monsters.includes(s.target)));
+  spells.forEach(sp => {
+    if (--sp.t > 0) return;
+    fx.push({ kind: 'burst', x: sp.x, y: sp.y, t: 12, col: COLORS[sp.type] }); boomFx(sp);
+    enemies.forEach(en => { if (Math.hypot(en.x - sp.x, en.y - sp.y) < 45) { en.hp -= sp.dmg; en.last = sp.owner; hitFx(en, sp.type, sp.dmg); if (sp.type === 'ice') en.slow = 180; } });
+    monsters.forEach(m => { if (Math.hypot(m.x - sp.x, m.y - sp.y) < 45) { monHp(m); m.hp -= sp.dmg; m.last = sp.owner; hitFx(m, sp.type, sp.dmg); } });
+  });
+  spells = spells.filter(sp => sp.t > 0);
+  fx.forEach(f => f.t--); fx = fx.filter(f => f.t > 0);
+  enemies.forEach(en => {
+    if (en.hp <= 0) { kills++; killFx(en); if (en.last) { en.last.k++; const nl = Math.min(5, 1 + Math.floor(Math.sqrt(en.last.k / 3))); if (nl > en.last.lvl) { en.last.lvl = nl; en.last.hp = maxHpOf(en.last); levelUpFx(en.last); } } }
+  });
+  if (enemies.some(e => e.kind === 9 && e.hp <= 0)) victory();
+  enemies = enemies.filter(en => en.hp > 0);
+  monsters.forEach(m => { if (m.hp !== undefined && m.hp <= 0) { kills++; killFx(m); if (m.last) { m.last.k++; const nl = Math.min(5, 1 + Math.floor(Math.sqrt(m.last.k / 3))); if (nl > m.last.lvl) { m.last.lvl = nl; m.last.hp = maxHpOf(m.last); levelUpFx(m.last); } } } });
+  monsters = monsters.filter(m => !(m.hp !== undefined && m.hp <= 0));
+
+  if (fireHp <= 0) {
+    fireHp = 0; gameOver = true; gameOverFx();
+    endScreen('The campfire went out!', false);
+  }
+}
+function px(x, y, w, h, col) { ctx.fillStyle = col; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+function eggSprite(x, y, type, glow, style, tier) {
+  tier = tier || 0; const k = [1, 1.1, 1.22, 1.38][tier];
+  if (tier) { ctx.globalAlpha = .25 + .2 * Math.sin(time / 8 + x); px(x - 11 * k, y - 13 * k, 22 * k, 26 * k, TIERCOL[tier]); ctx.globalAlpha = .55; px(x - 8 * k, y - 10 * k, 16 * k, 20 * k, TIERCOL[tier]); ctx.globalAlpha = 1; }
+  if (style === 'spell' && tier < 3) px(x - 7 * k, y - 9 * k, 14 * k, 18 * k, glow ? '#ffd700' : '#c9a400');
+  else if (glow && !tier) px(x - 7, y - 9, 14, 18, 'rgba(255,255,255,.5)');
+  px(x - 5 * k, y - 7 * k, 10 * k, 14 * k, tier === 3 ? '#ffd23a' : '#f4f0e0'); px(x - 3 * k, y - 3 * k, 6 * k, 6 * k, COLORS[type]);
+  if (tier === 3) px(x - 4 * k, y - 6 * k, 3 * k, 2 * k, '#fff6a0');
+}
+function label(t, y) {
+  ctx.textAlign = 'center'; ctx.font = '14px monospace';
+  ctx.fillStyle = '#000'; ctx.fillText(t, W / 2 + 1, y + 1);
+  ctx.fillStyle = '#fff'; ctx.fillText(t, W / 2, y); ctx.textAlign = 'left';
+}
+function draw() {
+  camX = Math.round(Math.max(0, Math.min(WW - W, trainer.x - W / 2)));
+  camY = Math.round(Math.max(0, Math.min(WH - H, trainer.y - H / 2)));
+  const sh = trauma * trauma * 9; shX = sh ? Math.round((Math.random() * 2 - 1) * sh) : 0; shY = sh ? Math.round((Math.random() * 2 - 1) * sh) : 0;
+  ctx.setTransform(1, 0, 0, 1, -camX + shX, -camY + shY);
+  px(camX - 12, camY - 12, W + 24, H + 24, '#2e6b2e');
+  ctx.fillStyle = '#3f8a3a'; ctx.beginPath(); ctx.arc(CX, CY, 125, 0, Math.PI * 2); ctx.fill();
+  smallTrees.forEach(t => {
+    if (t.x < camX - 16 || t.x > camX + W || t.y < camY - 16 || t.y > camY + H) return; px(t.x + 5, t.y + 10, 6, 8, '#5a3a1a'); px(t.x, t.y, 16, 12, '#1d4d1d'); });
+  trees.forEach(t => {
+    if (t.x < camX - 16 || t.x > camX + W || t.y < camY - 16 || t.y > camY + H) return; px(t.x + 5, t.y + 10, 6, 8, '#5a3a1a'); px(t.x, t.y, 16, 12, '#1d4d1d'); });
+  { // soft campfire glow + a few fireflies hovering close to the fire
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .35 + nightFade * .2 + fireFlash * .04 + Math.sin(time / 7) * .03;
+    ctx.drawImage(glowImg, CX - 90, CY - 90, 180, 180);
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    bugs.forEach(b => {
+      const bl = .55 + .45 * Math.sin(time / 11 + b.ph * 3);
+      ctx.globalAlpha = (.12 + nightFade * .14) * bl; px(b.x - 4, b.y - 4, 9, 9, '#f6ff7a');
+      ctx.globalAlpha = .45 + .45 * bl; px(b.x - 1, b.y - 1, 3, 3, '#fffbb0'); ctx.globalAlpha = 1;
+    });
+  }
+  caves.forEach(c => { if (c.x < camX - 50 || c.x > camX + W + 50 || c.y < camY - 50 || c.y > camY + H + 50) return;
+    if (!c.alive) { px(c.x - 26, c.y - 6, 52, 14, '#555'); px(c.x - 14, c.y - 14, 12, 10, '#444'); return; }
+    shadow(c.x, c.y + 24, 34); px(c.x - 32, c.y - 24, 64, 48, c.flash > 0 ? '#fff' : '#3a3028'); px(c.x - 22, c.y - 14, 44, 38, '#000'); px(c.x - 12, c.y - 8, 5, 5, '#ff3030'); px(c.x + 7, c.y - 8, 5, 5, '#ff3030');
+    if (c.hp < c.max) { px(c.x - 24, c.y - 32, 48, 5, '#000'); px(c.x - 23, c.y - 31, 46 * c.hp / c.max, 3, '#b040ff'); } });
+  px(CX - 10, CY + 4, 20, 6, '#5a3a1a');
+  const f = Math.floor(time / 8) % 2, fs = fireHp <= 0 ? .2 : .65 + .35 * Math.min(1, fireHp / up.fireMax);
+  px(CX - 6 * fs, CY + 6 - 14 * fs - f * 2, 12 * fs, 14 * fs + f * 2, fireFlash > 0 ? '#fff2c0' : '#ff7a1a');
+  px(CX - 3 * fs, CY + 6 - 10 * fs - f * 2, 6 * fs, 10 * fs + f * 2, fireFlash > 0 ? '#fff' : '#ffd23a');
+
+  const blink = Math.floor(time / 25) % 2 === 0;
+  wild.forEach(e => { if (e.x < camX - 20 || e.x > camX + W + 20 || e.y < camY - 20 || e.y > camY + H + 20) return; shadow(e.x, e.y + 8, 6); eggSprite(e.x, e.y + Math.sin(time / 12 + e.x) * 1.5, e.type, blink, e.style, e.tier); });
+  eggs.forEach(e => { const w = e.timer < 45 ? Math.sin(e.timer * .9) * (1 + (45 - e.timer) / 12) : 0; shadow(e.x, e.y + 8, 6); eggSprite(e.x + w, e.y, e.type, e.timer < 45 && e.timer % 6 < 3, e.style, e.tier); });
+
+  monsters.forEach(m => {
+    if (m.x < camX - 16 || m.x > camX + W + 16 || m.y < camY - 16 || m.y > camY + H + 16) return;
+    shadow(m.x, m.y + 8, 8);
+    if (m.elite) { px(m.x - 11, m.y - 11, 22, 22, 'rgba(192,107,255,.5)'); px(m.x - 9, m.y - 9, 18, 18, '#3a0a5a'); }
+    if (m.dashT > 0) px(m.x - m.vx * 2 - 6, m.y - m.vy * 2 - 6, 12, 12, 'rgba(255,80,40,.4)');
+    if (m.wind > 0) { px(m.x - 1, m.y - 24, 3, 7, '#fff'); px(m.x - 1, m.y - 15, 3, 3, '#fff'); }
+    px(m.x - 7, m.y - 7, 14, 14, m.wind > 0 ? '#ff7a1a' : m.dashT > 0 ? '#ff3030' : '#8a1a1a'); px(m.x - 9, m.y - 10, 4, 5, '#4a0a0a'); px(m.x + 5, m.y - 10, 4, 5, '#4a0a0a');
+    px(m.x - 4, m.y - 3, 3, 3, '#ffe03a'); px(m.x + 1, m.y - 3, 3, 3, '#ffe03a');
+  });
+  dragons.forEach(d => {
+    const bp = d.born > 0 ? 1 - d.born / 36 : 1, bs = bp < 1 ? Math.max(.1, easeOutBack(bp)) : 1, sc = (1 + .12 * (d.lvl - 1) + .05 * (d.tier || 0)) * bs, col = d.flash > 0 ? '#fff' : COLORS[d.type], r = d.dir;
+    if (d.down > 0) { px(d.x - 8, d.y - 3, 16, 7, '#777'); ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.fillText('zz', d.x - 6, d.y - 7); return; }
+    const lo = (d.at > 0 ? d.at / 8 : 0) * 4, ox = (d.ax || 0) * lo, oy = (d.ay || 0) * lo; shadow(d.x, d.y + 7 * sc, 11 * sc);
+    if (d.glow > 0) { ctx.globalAlpha = Math.min(.5, d.glow / 70); ctx.strokeStyle = '#ffe03a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(d.x, d.y + 7, 14 + (70 - d.glow) * .15, 6 + (70 - d.glow) * .06, 0, 0, 6.283); ctx.stroke(); ctx.globalAlpha = 1; }
+    ctx.translate(ox, oy);
+    if (d.tier) { ctx.globalAlpha = .6; ctx.strokeStyle = TIERCOL[d.tier]; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(d.x, d.y + 7 * sc, 13 * sc, 5 * sc, 0, 0, 6.283); ctx.stroke(); ctx.globalAlpha = 1; }
+    px(d.x - 8 * sc, d.y - 6 * sc, 16 * sc, 12 * sc, col);
+    if (d.tier) px(d.x - 8 * sc, d.y - 6 * sc, 16 * sc, 2, TIERCOL[d.tier]);
+    px(r > 0 ? d.x + 6 * sc : d.x - 14 * sc, d.y - 10 * sc, 8 * sc, 8 * sc, col);
+    px(r > 0 ? d.x + 10 * sc : d.x - 12 * sc, d.y - 8 * sc, 2, 2, '#000');
+    px(r > 0 ? d.x - 12 * sc : d.x + 6 * sc, d.y, 6 * sc, 4 * sc, col);
+    for (let i = 0; i < d.lvl - 1; i++) px(d.x - 8 + i * 4, d.y - 16 * sc, 3, 3, '#ffe03a');
+    const mh = maxHpOf(d);
+    if (d.hp < mh) { px(d.x - 9, d.y - 22 * sc, 18, 4, '#000'); px(d.x - 8, d.y - 22 * sc + 1, 16 * Math.max(0, d.hp) / mh, 2, '#4adf5a'); }
+    if (d.style === 'spell') px(d.x - 5, d.y - 14 * sc, 10, 3, '#ffd700');
+    ctx.translate(-ox, -oy);
+  });
+
+  enemies.forEach(e => {
+    if (e.x < camX - 20 || e.x > camX + W + 20 || e.y < camY - 20 || e.y > camY + H + 20) return;
+    if (e.ph === undefined) e.ph = Math.random() * 6.28;
+    const hop = Math.abs(Math.sin(time * .18 + e.ph)) * 2.5, rk = (e.rc || 0) / 6, ex = e.x + (e.kx || 0) * rk, ey = e.y + (e.ky || 0) * rk - hop;
+    shadow(e.x, e.y + 7, 7 - hop * .3);
+    if (e.kind === 9) { px(ex - 22, ey - 26, 44, 44, e.flash > 0 ? '#fff' : '#4a0a0a'); px(ex - 26, ey - 32, 10, 12, '#2a0505'); px(ex + 16, ey - 32, 10, 12, '#2a0505'); px(ex - 12, ey - 14, 8, 8, '#ffe03a'); px(ex + 4, ey - 14, 8, 8, '#ffe03a'); }
+    if (e.kind === 1) px(ex - 9, ey - 9, 18, 18, e.flash > 0 ? '#fff' : '#3a0a4a');
+    px(ex - 6, ey - 6, 12, 12, e.flash > 0 ? '#fff' : e.slow > 0 ? '#7a7aff' : e.red ? '#8a1a1a' : e.kind === 2 ? '#c0501a' : e.kind === 3 ? '#2a7a3a' : '#6a1a6a');
+    px(ex - 3, ey - 3, 2, 2, e.flash > 0 ? '#f55' : '#f00'); px(ex + 1, ey - 3, 2, 2, e.flash > 0 ? '#f55' : '#f00');
+  });
+  shots.forEach(s => { ctx.globalAlpha = .3; px(s.x - 4, s.y - 4, 8, 8, COLORS[s.type]); ctx.globalAlpha = 1; px(s.x - 2, s.y - 2, 4, 4, COLORS[s.type]); px(s.x - 1, s.y - 1, 2, 2, '#fff'); });
+  spells.forEach(sp => {
+    ctx.globalAlpha = .2 + (1 - sp.t / 25) * .4; ctx.fillStyle = COLORS[sp.type];
+    ctx.beginPath(); ctx.arc(sp.x, sp.y, 45, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+  });
+  fx.forEach(f => {
+    if (f.kind === 'slash') { for (let i = 0; i < 5; i++) { px(f.x - 7 + i * 3, f.y - 7 + i * 3, 3, 3, f.col); px(f.x + 5 - i * 3, f.y - 7 + i * 3, 3, 3, f.col); } }
+    else if (f.kind === 'bolt') { ctx.globalAlpha = f.t / 8; ctx.strokeStyle = '#fff27a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(f.x, f.y); for (let i = 1; i < 5; i++) ctx.lineTo(f.x + (f.x2 - f.x) * i / 5 + (Math.random() - .5) * 8, f.y + (f.y2 - f.y) * i / 5 + (Math.random() - .5) * 8); ctx.lineTo(f.x2, f.y2); ctx.stroke(); ctx.globalAlpha = 1; }
+    else if (f.kind === 'ring') { ctx.globalAlpha = f.t / f.m; ctx.strokeStyle = f.col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(f.x, f.y, f.r0 + (1 - f.t / f.m) * f.r1, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; }
+    else { ctx.globalAlpha = f.t / 12; ctx.strokeStyle = f.col; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(f.x, f.y, 45, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; }
+  });
+
+  drawParts(false);
+  if (deadT > 0) { // knocked out: gravestone and a floating ghost while the respawn timer runs
+    px(trainer.x - 6, trainer.y - 12, 12, 16, '#8a8a8a'); px(trainer.x - 4, trainer.y - 14, 8, 3, '#8a8a8a'); px(trainer.x - 1, trainer.y - 9, 2, 8, '#555'); px(trainer.x - 4, trainer.y - 6, 8, 2, '#555');
+    ctx.globalAlpha = .5 + .2 * Math.sin(time / 8); px(trainer.x - 5, trainer.y - 30 - Math.sin(time / 10) * 3, 10, 12, '#bfe6ff'); ctx.globalAlpha = 1;
+  } else {
+  const mv = Math.abs(tvx) + Math.abs(tvy) > .1, ty = trainer.y + (mv ? -Math.abs(Math.sin(time * .3)) * 2 : 0); shadow(trainer.x, trainer.y + 9, 7);
+  px(trainer.x - 5, ty - 14, 10, 10, trFlash > 0 ? '#fff' : '#e8c39a'); px(trainer.x - 5, ty - 14, 10, 3, trFlash > 0 ? '#fff' : '#5a3a1a'); px(trainer.x - 5, ty - 4, 10, 12, trFlash > 0 ? '#fff' : hurt > 0 && hurt % 6 < 3 ? '#ff4040' : '#3a5ae0');
+  if (carry) eggSprite(trainer.x, ty - 24 + Math.sin(time / 6), carry.type, false, carry.style, carry.tier);
+  }
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (nightFade > .01) { const dk = nightFade;
+    nctx.globalCompositeOperation = 'source-over'; nctx.clearRect(0, 0, W, H);
+    nctx.fillStyle = 'rgba(' + Math.round(70 - 66 * dk) + ',' + Math.round(24 - 20 * dk) + ',' + Math.round(55 - 27 * dk) + ',' + (.74 * dk) + ')'; nctx.fillRect(0, 0, W, H);
+    nctx.globalCompositeOperation = 'destination-out';
+    const hole = (x, y, r0, r1) => { const g = nctx.createRadialGradient(x, y, r0, x, y, r1); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); nctx.fillStyle = g; nctx.fillRect(x - r1, y - r1, r1 * 2, r1 * 2); };
+    hole(CX - camX + shX, CY - camY + shY, CAMP * .35, CAMP + 10);
+    ctx.drawImage(nc, 0, 0);
+  }
+  if (dawn > 0) {
+    ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,236,170,' + (.5 * Math.min(1, dawn * 1.4)) + ')'; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = 'rgba(255,250,220,' + (.35 * Math.max(0, dawn - .75) * 4) + ')'; ctx.fillRect(0, 0, W, H);
+  }
+  ctx.setTransform(1, 0, 0, 1, -camX + shX, -camY + shY); drawParts(true); drawPops(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawScreenFx();
+  { const lowF = fireHp / up.fireMax < .3 && !gameOver, pl = lowF && Math.floor(time / 8) % 2 === 0;
+    px(10, 10, 104, 14, pl ? '#ff3030' : '#000'); px(12, 12, 100, 10, '#000'); px(12, 12, Math.max(0, fireShow) / up.fireMax * 100, 10, '#fff'); px(12, 12, Math.max(0, fireHp) / up.fireMax * 100, 10, fireFlash > 0 ? '#ffd0a0' : lowF ? '#ff2a2a' : '#ff5a2a');
+    const lowT = deadT === 0 && tHp / up.tMax < .25, pt = lowT && Math.floor(time / 8) % 2 === 0;
+    px(10, 28, 104, 14, pt ? '#ff3030' : '#000'); px(12, 30, 100, 10, '#000'); px(12, 30, Math.max(0, tShow) / up.tMax * 100, 10, '#fff'); px(12, 30, Math.max(0, tHp) / up.tMax * 100, 10, hurt > 0 ? '#ff8a8a' : '#4adf5a'); }
+  ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.fillText('camp', 118, 21); ctx.fillText('you', 118, 39);
+  ctx.font = '14px monospace';
+  ctx.save(); ctx.translate(10, 60); ctx.scale(1 + killPulse * .03, 1 + killPulse * .03); ctx.fillText('Defeated: ' + kills, 0, 0); ctx.restore();
+  ctx.fillText('Wave: ' + wave, 10, 78);
+  {
+    const cx0 = 40, cy0 = 154, R = 28, cols = ['#ffe27a', '#ffc65a', '#e08a4a', '#7a4a8a', '#12123f'], a0 = -Math.PI / 2, step = Math.PI * 2 / MEGA_EVERY;
+    ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.fillText('Day / Threat', 10, 116);
+    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(cx0, cy0, R + 3, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < MEGA_EVERY; i++) { ctx.fillStyle = cols[i]; ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.arc(cx0, cy0, R, a0 + i * step, a0 + (i + 1) * step); ctx.closePath(); ctx.fill(); }
+    ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 1;
+    for (let i = 0; i < MEGA_EVERY; i++) { ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.lineTo(cx0 + Math.cos(a0 + i * step) * R, cy0 + Math.sin(a0 + i * step) * R); ctx.stroke(); }
+    ctx.strokeStyle = '#ff3030'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx0, cy0, R + 1, a0 + 4 * step, a0 + 5 * step); ctx.stroke();
+    const ang = a0 + dayPos * Math.PI * 2, hx = cx0 + Math.cos(ang) * (R - 3), hy = cy0 + Math.sin(ang) * (R - 3), moon = dayPos > .78;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.lineTo(hx, hy); ctx.stroke();
+    px(cx0 - 2, cy0 - 2, 4, 4, '#fff');
+    if (moon) { px(hx - 4, hy - 4, 8, 8, '#e8ecff'); px(hx - 1, hy - 5, 5, 6, '#12123f'); }
+    else { px(hx - 3, hy - 3, 6, 6, '#fff2a0'); px(hx - 5, hy - 1, 10, 2, '#ffd23a'); px(hx - 1, hy - 5, 2, 10, '#ffd23a'); }
+    const rem = Math.ceil((wave + (waveBreak ? 1 : 0)) / MEGA_EVERY) * MEGA_EVERY - wave;
+    const lv = mi > .6 ? 'EXTREME' : mi > .25 ? 'HIGH' : mi > .08 ? 'MEDIUM' : 'LOW';
+    ctx.font = '11px monospace'; ctx.fillStyle = night ? '#ff6a6a' : rem === 1 ? '#ffb04a' : '#fff';
+    ctx.fillText('Nightmare', 80, 146); ctx.fillText(night ? 'NOW!' : rem === 1 ? 'is NEXT!' : 'in ' + rem + ' waves', 80, 159);
+    ctx.fillStyle = mi > .25 ? '#ff5a5a' : mi > .08 ? '#ffb04a' : '#9aff9a'; ctx.fillText('Threat: ' + lv, 80, 176);
+    ctx.fillStyle = '#fff'; ctx.font = '14px monospace';
+  }
+  if (waveBreak) ctx.fillText('Next wave in ' + Math.ceil(waveTimer / 60) + 's', 10, 96);
+  else ctx.fillText('Enemies left: ' + (enemies.length + waveLeft), 10, 96);
+  drawBanner(); drawCombo(); bossBar();
+  { const dT = Math.hypot(trainer.x - CX, trainer.y - CY), od = tierOdds(dT); ctx.font = '11px monospace'; ctx.fillStyle = '#cfe8b8'; ctx.fillText('Zone: ' + zoneOf(dT), 10, 204);
+    ctx.fillStyle = '#9bd88a'; ctx.fillText('Odds: ' + Math.round(od[1] * 100) + '% strong ' + Math.round(od[0] * 100) + '% elite', 10, 217);
+    const ac = caves.filter(c => c.alive).length; ctx.fillStyle = ac ? '#d9a0ff' : '#9aff9a'; ctx.fillText(ac ? 'Caves left: ' + ac + (night ? '' : raid ? '  RAID ON (R)' : '  press R to raid') : 'All caves destroyed!', 10, 247);
+    const gs = wild.filter(e => e.gold);
+    if (gs.length) { let nd = 1e9, ng = null; gs.forEach(e => { const q = Math.hypot(e.x - trainer.x, e.y - trainer.y); if (q < nd) { nd = q; ng = e; } });
+      ctx.fillStyle = Math.floor(time / 15) % 2 ? '#ffd700' : '#fff3a0'; ctx.fillText('Golden eggs: ' + gs.length + ' (nearest ' + Math.round(nd / 10) + 'm)', 10, 232);
+      const gx = ng.x - camX, gy = ng.y - camY;
+      if (gx < 6 || gx > W - 6 || gy < 6 || gy > H - 6) { const ix = Math.max(12, Math.min(W - 12, gx)), iy = Math.max(60, Math.min(H - 12, gy)); px(ix - 5, iy - 5, 10, 10, '#000'); px(ix - 4, iy - 4, 8, 8, '#ffd700'); } } }
+  if (msgT > 0) label('You were knocked out! The egg was lost.', 150);
+  if (deadT > 0) label('Respawning in ' + Math.ceil(deadT / 60) + 's...', 120);
+  if (eggMsgT > 0) label('Your egg dropped! Pick it up again!', 165);
+  if (carry && eggs.length >= 2 && Math.hypot(trainer.x - CX, trainer.y - CY) < 80) label('Incubators full - wait for a hatch', 112);
+  if (carry) label(carry.gold ? 'GOLDEN egg! Get it home - it slows you.' : carry.tier ? 'Bring the ' + TIERN[carry.tier] + ' egg home - it slows you.' : 'Bring the egg to the campfire!', 90);
+  else if (!dragons.length && !eggs.length) label('Find an egg in the forest!', 90);
+
+  if (night && Math.hypot(trainer.x - CX, trainer.y - CY) >= CAMP && Math.floor(time / 20) % 2 === 0) label('DANGER! Get back to the campfire!', 144);
+  else if (night) { ctx.fillStyle = '#ff6a6a'; ctx.font = '12px monospace'; ctx.textAlign = 'right'; ctx.fillText('MEGA WAVE - NIGHT', W - 8, 47); ctx.textAlign = 'left'; }
+  const bx = CX - camX, by = CY - camY, away = bx < 10 || bx > W - 10 || by < 10 || by > H - 10;
+  if (away) {
+    const ix = Math.max(24, Math.min(W - 24, bx)), iy = Math.max(20, Math.min(H - 24, by));
+    px(ix - 6, iy - 6, 12, 12, '#ff7a1a'); px(ix - 3, iy - 3, 6, 6, '#ffd23a');
+    ctx.font = '11px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+    ctx.fillText('base ' + Math.round(Math.hypot(CX - trainer.x, CY - trainer.y) / 10) + 'm', ix, iy + 20); ctx.textAlign = 'left';
+    if (enemies.some(e => Math.hypot(e.x - CX, e.y - CY) < 40)) label('Your base is under attack!', 120);
+  }
+  caves.forEach((cv, i) => { if (!arrowsOn || !cv.alive) return; const sx = cv.x - camX, sy = cv.y - camY; if (sx >= 10 && sx <= W - 10 && sy >= 10 && sy <= H - 10) return;
+    const a = Math.atan2(sy - H / 2, sx - W / 2), ux = Math.cos(a), uy = Math.sin(a), t = Math.min((W / 2 - 30) / (Math.abs(ux) || 1e-6), (H / 2 - 30) / (Math.abs(uy) || 1e-6)), ex = W / 2 + ux * t, ey = H / 2 + uy * t;
+    ctx.save(); ctx.translate(ex, ey); ctx.rotate(a); ctx.fillStyle = '#b040ff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(11, 0); ctx.lineTo(-6, -8); ctx.lineTo(-6, 8); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    ctx.font = '10px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#ecc8ff'; ctx.fillText('Cave ' + (i + 1) + ' ' + Math.round(Math.hypot(cv.x - trainer.x, cv.y - trainer.y) / 10) + 'm', ex, ey + (ey < H / 2 ? 22 : -14)); ctx.textAlign = 'left'; });
+  if (nav) label('Heading to Cave ' + (caves.indexOf(nav) + 1) + ' · ' + Math.round(Math.hypot(nav.x - trainer.x, nav.y - trainer.y) / 10) + 'm  (move to cancel)', 76);
+  { const cw = Math.max(1, wave), bw = 14, gap = 3, tw = FINAL_WAVE * (bw + gap) - gap, x0 = Math.round((W - tw) / 2), y0 = H - 22;
+    for (let i = 1; i <= FINAL_WAVE; i++) { const nt = i % MEGA_EVERY === 0, x = x0 + (i - 1) * (bw + gap), done = i < cw || (i === cw && waveBreak && waveLeft === 0 && enemies.length === 0 && wave > 0);
+      px(x, y0, bw, 7, done ? '#ffd23a' : i === cw ? (Math.floor(time / 20) % 2 ? '#fff' : '#ff9a3a') : '#2a3a2a'); if (nt) px(x, y0 - 3, bw, 2, '#ff4a4a'); }
+    ctx.font = '10px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('Wave ' + cw + '/' + FINAL_WAVE + '  ·  next night: wave ' + Math.ceil(cw / MEGA_EVERY) * MEGA_EVERY + (night ? '  (NOW)' : ''), W / 2, y0 - 7); ctx.textAlign = 'left'; }
+  const mw = 130, m0x = W - mw - 8, m0y = 50, k = mw / WW;
+  const dot = (x, y, z, col) => px(m0x + x * k - z / 2, m0y + y * k - z / 2, z, z, col);
+  ctx.globalAlpha = .55; px(m0x, m0y, mw, mw, '#000'); ctx.globalAlpha = 1;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(m0x + camX * k, m0y + camY * k, W * k, H * k);
+  wild.forEach(e => dot(e.x, e.y, e.gold ? 7 : e.style === 'spell' ? 5 : e.tier ? 4 : 3, e.gold ? (Math.floor(time / 15) % 2 ? '#ffd700' : '#fff') : COLORS[e.type]));
+  enemies.forEach(e => dot(e.x, e.y, e.kind === 9 ? 8 : 2, e.kind === 9 ? '#ff2a2a' : '#d040ff'));
+  monsters.forEach(m => dot(m.x, m.y, m.elite ? 4 : 2, m.elite ? '#c06bff' : '#ff3030'));
+  caves.forEach((c, i) => { const mx = m0x + c.x * k, my = m0y + c.y * k;
+    if (!c.alive) { px(mx - 3, my - 2, 6, 4, '#666'); return; }
+    const p = 6 + (Math.floor(time / 12) % 2); ctx.strokeStyle = '#e0a8ff'; ctx.lineWidth = 1; ctx.strokeRect(Math.round(mx - p) + .5, Math.round(my - p) + .5, p * 2, p * 2);
+    px(mx - 4, my - 4, 8, 8, '#b040ff'); px(mx - 2, my - 1, 4, 5, '#000');
+    ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(String(i + 1), mx, my - p - 2); ctx.textAlign = 'left'; });
+  dragons.forEach(d => dot(d.x, d.y, 3, COLORS[d.type]));
+  dot(CX, CY, 6, '#ff7a1a'); dot(trainer.x, trainer.y, 5, '#4aa8ff');
+  { // dragon roster under the minimap: type, attack style and count
+    const SN = { melee: 'Melee', range: 'Range', spell: 'Spell' }, rows = [];
+    TYPES.forEach(t => ['melee', 'range', 'spell'].forEach(st => {
+      const n = dragons.filter(d => d.type === t && d.style === st).length;
+      if (n) rows.push({ t, st, n, down: dragons.filter(d => d.type === t && d.style === st && d.down > 0).length });
+    }));
+    const pw = 132, pxl = W - pw - 8, py = m0y + mw + 6, rh = 15, ph = 18 + Math.max(1, rows.length) * rh;
+    ctx.globalAlpha = .55; px(pxl, py, pw, ph, '#000'); ctx.globalAlpha = 1;
+    ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.fillText('Dragons: ' + dragons.length + '/' + dragonCap(), pxl + 4, py + 12);
+    if (!rows.length) { ctx.fillStyle = '#aaa'; ctx.font = '10px monospace'; ctx.fillText('none yet', pxl + 4, py + 29); }
+    rows.forEach((o, i) => {
+      const ry = py + 18 + i * rh, col = COLORS[o.t];
+      px(pxl + 4, ry + 3, 11, 7, col); px(pxl + 12, ry + 1, 5, 5, col); px(pxl + 15, ry + 2, 1, 1, '#000');
+      if (o.st === 'spell') px(pxl + 5, ry, 7, 2, '#ffd700');
+      ctx.font = '10px monospace'; ctx.fillStyle = o.st === 'melee' ? '#ff9a9a' : o.st === 'spell' ? '#ffd700' : '#a0e0ff';
+      ctx.fillText(o.t[0].toUpperCase() + o.t.slice(1) + ' ' + SN[o.st], pxl + 20, ry + 9);
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'right'; ctx.fillText('x' + o.n, pxl + pw - 4, ry + 9); ctx.textAlign = 'left';
+    });
+  }
+  if (bigMap) {
+    const sz = Math.min(W, H) - 70, bx = Math.round((W - sz) / 2), by = Math.round((H - sz) / 2 + 12), kk = sz / WW, bd = (x, y, z, col) => px(bx + x * kk - z / 2, by + y * kk - z / 2, z, z, col);
+    ctx.globalAlpha = .9; px(bx, by, sz, sz, '#0d1a0b'); ctx.globalAlpha = 1; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(bx + .5, by + .5, sz, sz);
+    ctx.strokeStyle = 'rgba(255,255,255,.18)'; [700, 1400, 2100].forEach(r => { ctx.beginPath(); ctx.arc(bx + CX * kk, by + CY * kk, r * kk, 0, 6.283); ctx.stroke(); });
+    wild.forEach(e => bd(e.x, e.y, e.gold ? 6 : 3, e.gold ? '#ffd700' : COLORS[e.type]));
+    monsters.forEach(m => bd(m.x, m.y, 2, m.elite ? '#c06bff' : '#ff3030')); enemies.forEach(e => bd(e.x, e.y, e.kind === 9 ? 8 : 2, e.kind === 9 ? '#ff2a2a' : '#d040ff'));
+    caves.forEach((c, i) => { const mx = bx + c.x * kk, my = by + c.y * kk;
+      if (!c.alive) { px(mx - 5, my - 3, 10, 6, '#666'); ctx.font = '10px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#999'; ctx.fillText('Cave ' + (i + 1) + ' (destroyed)', mx, my - 8); ctx.textAlign = 'left'; return; }
+      const p = 10 + (Math.floor(time / 12) % 2) * 2; ctx.strokeStyle = '#e0a8ff'; ctx.strokeRect(Math.round(mx - p) + .5, Math.round(my - p) + .5, p * 2, p * 2); px(mx - 7, my - 7, 14, 14, '#b040ff'); px(mx - 3, my - 2, 6, 8, '#000');
+      ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('Cave ' + (i + 1), mx, my - p - 14); ctx.font = '10px monospace'; ctx.fillStyle = '#e8c0ff'; ctx.fillText(Math.round(Math.hypot(c.x - trainer.x, c.y - trainer.y) / 10) + 'm · HP ' + Math.max(0, Math.round(100 * c.hp / c.max)) + '%', mx, my - p - 3); ctx.textAlign = 'left'; });
+    dragons.forEach(d => bd(d.x, d.y, 3, COLORS[d.type])); bd(CX, CY, 8, '#ff7a1a'); bd(trainer.x, trainer.y, 6, '#4aa8ff');
+    ctx.font = '12px monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText('MAP  ·  purple = caves, orange = camp, blue = you  ·  G / 🗺 to close', W / 2, by - 8); ctx.textAlign = 'left';
+  }
+  if (joy.on) {
+    const k = W / innerWidth, ox = joy.ox * k, oy = joy.oy * k, m = Math.min(Math.hypot(joy.dx, joy.dy), 40) * k, a = Math.atan2(joy.dy, joy.dx);
+    ctx.globalAlpha = .35; px(ox - 20, oy - 20, 40, 40, '#fff');
+    ctx.globalAlpha = .8; px(ox + Math.cos(a) * m - 8, oy + Math.sin(a) * m - 8, 16, 16, '#fff');
+    ctx.globalAlpha = 1;
+  }
+}
+let lastT = 0, acc = 0; const STEP = 1000 / 60;
+function loop(now) { // fixed-timestep simulation decoupled from display refresh rate
+  now = now || performance.now(); if (!lastT) lastT = now;
+  acc = Math.min(acc + (now - lastT) * TUNE.pace, STEP * 5); lastT = now;
+  for (let n = 0; acc >= STEP && n < 5; n++) { update(); acc -= STEP; }
+  fxFrame(); draw(); requestAnimationFrame(loop);
+}
+resize(); reset(); loop();
+</script>
+</body>
+</html>

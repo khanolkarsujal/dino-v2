@@ -1,0 +1,6 @@
+{
+  "name": "Dragon Campfire: Kingdom of Embers",
+  "description": "A 3D tactical kingdom-building, dragon-raising, and campfire defense survival game with AI cinematic tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
